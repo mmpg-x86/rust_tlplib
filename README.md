@@ -26,8 +26,7 @@ let tlp_type = header.get_tlp_type().unwrap();
 let tlp_format = packet.get_tlp_format();
 
 // Get requester_id field from this TLP (TLP can be of different types)
-let requester_id;
-match (tlp_type) {
+match tlp_type {
      TlpType::MemReadReq |
      TlpType::MemReadLockReq |
      TlpType::MemWriteReq |
@@ -35,28 +34,40 @@ match (tlp_type) {
      TlpType::IOWriteReq |
      TlpType::FetchAddAtomicOpReq |
      TlpType::SwapAtomicOpReq |
-     TlpType::CompareSwapAtomicOpReq => requester_id = new_mem_req(packet.get_data(), &tlp_format).req_id(),
+     TlpType::CompareSwapAtomicOpReq => {
+         let requester_id = new_mem_req(packet.get_data(), &tlp_format).req_id();
+         println!("Requester ID from Memory/IO TLP: {}", requester_id);
+     }
      TlpType::ConfType0ReadReq |
      TlpType::ConfType0WriteReq |
      TlpType::ConfType1ReadReq |
-     TlpType::ConfType1WriteReq => requester_id = new_conf_req(packet.get_data(), &tlp_format).req_id(),
+     TlpType::ConfType1WriteReq => {
+         let requester_id = new_conf_req(packet.get_data(), &tlp_format).req_id();
+         println!("Requester ID from Config TLP: {}", requester_id);
+     }
      TlpType::MsgReq |
-     TlpType::MsgReqData => requester_id = new_msg_req(packet.get_data(), &tlp_format).req_id(),
+     TlpType::MsgReqData => {
+         let requester_id = new_msg_req(packet.get_data(), &tlp_format).req_id();
+         println!("Requester ID from Message TLP: {}", requester_id);
+     }
      TlpType::Cpl |
      TlpType::CplData |
      TlpType::CplLocked |
-     TlpType::CplDataLocked => requester_id = new_cmpl_req(packet.get_data(), &tlp_format).req_id(),
+     TlpType::CplDataLocked => {
+         let requester_id = new_cmpl_req(packet.get_data(), &tlp_format).req_id();
+         println!("Requester ID from Completion TLP: {}", requester_id);
+     }
      TlpType::LocalTlpPrefix |
-     TlpType::EndToEndTlpPrefix => println!("I need to implement This Type: {:?}", tlp_type),
+     TlpType::EndToEndTlpPrefix => {
+         println!("TLP Prefix Type: {:?} (not yet implemented)", tlp_type);
+     }
 }
-
-println!("Requester ID from This TLP Packet: {}", requester_id);
 ```
 
 ## Documentation
 
 The documentation of the released version is available on [doc.rs](https://docs.rs/rtlp-lib).
-To generate current documentation please run `cargo new docs --lib`
+To generate current documentation please run `cargo doc --open`
 
 ## License
 

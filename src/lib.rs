@@ -4,6 +4,19 @@ use std::fmt::Display;
 #[macro_use]
 extern crate bitfield;
 
+/// Errors that can occur when parsing TLP packets
+#[derive(Debug, Clone, PartialEq)]
+pub enum TlpError {
+    /// Invalid format field value
+    InvalidFormat,
+    /// Invalid type field value
+    InvalidType,
+    /// Unknown encoding type
+    UnknownEncoding,
+    /// Unsupported combination of format and type
+    UnsupportedCombination,
+}
+
 #[repr(u8)]
 #[derive(PartialEq, Copy, Clone)]
 pub enum TlpFmt {
@@ -28,7 +41,7 @@ impl Display for TlpFmt {
 }
 
 impl TryFrom<u32> for TlpFmt {
-    type Error = ();
+    type Error = TlpError;
 
     fn try_from(v: u32) -> Result<Self, Self::Error> {
         match v {
@@ -37,7 +50,7 @@ impl TryFrom<u32> for TlpFmt {
             x if x == TlpFmt::WithDataHeader3DW as u32 => Ok(TlpFmt::WithDataHeader3DW),
             x if x == TlpFmt::WithDataHeader4DW as u32 => Ok(TlpFmt::WithDataHeader4DW),
             x if x == TlpFmt::TlpPrefix as u32 => Ok(TlpFmt::TlpPrefix),
-            _ => Err(()),
+            _ => Err(TlpError::InvalidFormat),
         }
     }
 }
@@ -57,7 +70,7 @@ pub enum TlpFormatEncodingType {
 }
 
 impl TryFrom<u32> for TlpFormatEncodingType {
-    type Error = ();
+    type Error = TlpError;
 
     fn try_from(v: u32) -> Result<Self, Self::Error> {
         match v {
@@ -71,7 +84,7 @@ impl TryFrom<u32> for TlpFormatEncodingType {
             x if x == TlpFormatEncodingType::FetchAtomicOpRequest as u32 	=> Ok(TlpFormatEncodingType::FetchAtomicOpRequest),
             x if x == TlpFormatEncodingType::UnconSwapAtomicOpRequest as u32 => Ok(TlpFormatEncodingType::UnconSwapAtomicOpRequest),
             x if x == TlpFormatEncodingType::CompSwapAtomicOpRequest as u32 => Ok(TlpFormatEncodingType::CompSwapAtomicOpRequest),
-            _ => Err(()),
+            _ => Err(TlpError::UnknownEncoding),
         }
     }
 }
@@ -149,7 +162,7 @@ bitfield! {
 
 impl<T: AsRef<[u8]>> TlpHeader<T> {
 
-    fn get_tlp_type(&self) -> Result<TlpType, ()> {
+    fn get_tlp_type(&self) -> Result<TlpType, TlpError> {
         let tlp_type = self.get_type();
         let tlp_fmt = self.get_format();
 
@@ -160,74 +173,73 @@ impl<T: AsRef<[u8]>> TlpHeader<T> {
                     Ok(TlpFmt::NoDataHeader4DW) => Ok(TlpType::MemReadReq),
                     Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::MemWriteReq),
                     Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::MemWriteReq),
-					_ => Err(()),
+					_ => Err(TlpError::UnsupportedCombination),
                 }
             }
             Ok(TlpFormatEncodingType::MemoryLockRequest) => {
                 match TlpFmt::try_from(tlp_fmt) {
                     Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::MemReadLockReq),
                     Ok(TlpFmt::NoDataHeader4DW) => Ok(TlpType::MemReadLockReq),
-					_ => Err(()),
+					_ => Err(TlpError::UnsupportedCombination),
                 }
             }
 			Ok(TlpFormatEncodingType::IORequest) => {
 				match TlpFmt::try_from(tlp_fmt) {
 					Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::IOReadReq),
 					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::IOWriteReq),
-					_ => Err(()),
+					_ => Err(TlpError::UnsupportedCombination),
 				}
 			}
 			Ok(TlpFormatEncodingType::ConfigType0Request) => {
 				match TlpFmt::try_from(tlp_fmt) {
 					Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::ConfType0ReadReq),
 					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::ConfType0WriteReq),
-					_ => Err(()),
+					_ => Err(TlpError::UnsupportedCombination),
 				}
 			}
             Ok(TlpFormatEncodingType::ConfigType1Request) => {
                     match TlpFmt::try_from(tlp_fmt) {
                             Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::ConfType1ReadReq),
                             Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::ConfType1WriteReq),
-                            _ => Err(()),
+                            _ => Err(TlpError::UnsupportedCombination),
                     }
             }
 			Ok(TlpFormatEncodingType::Completion) => {
-				println!("Completion fmt: {}", tlp_fmt);
 				match TlpFmt::try_from(tlp_fmt) {
 					Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::Cpl),
 					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::CplData),
-					_ => Err(()),
+					_ => Err(TlpError::UnsupportedCombination),
 				}
 			}
 			Ok(TlpFormatEncodingType::CompletionLocked) => {
 				match TlpFmt::try_from(tlp_fmt) {
 					Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::CplLocked),
 					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::CplDataLocked),
-					_ => Err(()),
+					_ => Err(TlpError::UnsupportedCombination),
 				}
 			}
 			Ok(TlpFormatEncodingType::FetchAtomicOpRequest) => {
 				match TlpFmt::try_from(tlp_fmt) {
 					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::FetchAddAtomicOpReq),
 					Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::FetchAddAtomicOpReq),
-					_ => Err(()),
+					_ => Err(TlpError::UnsupportedCombination),
 				}
 			}
 			Ok(TlpFormatEncodingType::UnconSwapAtomicOpRequest) => {
 				match TlpFmt::try_from(tlp_fmt) {
 					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::SwapAtomicOpReq),
 					Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::SwapAtomicOpReq),
-					_ => Err(()),
+					_ => Err(TlpError::UnsupportedCombination),
 				}
 			}
 			Ok(TlpFormatEncodingType::CompSwapAtomicOpRequest) => {
 				match TlpFmt::try_from(tlp_fmt) {
 					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::CompareSwapAtomicOpReq),
 					Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::CompareSwapAtomicOpReq),
-					_ => Err(()),
+					_ => Err(TlpError::UnsupportedCombination),
 				}
 			}
-			Err(_) => Err(())
+			Err(e) => Err(e)
         }
     }
 }
@@ -450,7 +462,7 @@ bitfield! {
 
 impl <T: AsRef<[u8]>> CompletionRequest for CompletionReqDW23<T> {
     fn cmpl_id(&self) -> u16 {
-        self.get_completer_id() as u16
+        self.get_completer_id()
     }
     fn cmpl_stat(&self) -> u8 {
         self.get_cmpl_stat() as u8
@@ -459,10 +471,10 @@ impl <T: AsRef<[u8]>> CompletionRequest for CompletionReqDW23<T> {
         self.get_bcm() as u8
     }
     fn byte_cnt(&self) -> u16 {
-        self.get_byte_cnt() as u16
+        self.get_byte_cnt()
     }
     fn req_id(&self) -> u16 {
-        self.get_req_id() as u16
+        self.get_req_id()
     }
     fn tag(&self) -> u8 {
         self.get_tag() as u8
@@ -516,7 +528,7 @@ bitfield! {
 
 impl <T: AsRef<[u8]>> MessageRequest for MessageReqDW24<T> {
     fn req_id(&self) -> u16 {
-        self.get_requester_id() as u16
+        self.get_requester_id()
     }
     fn tag(&self) -> u8 {
         self.get_tag() as u8
@@ -565,10 +577,10 @@ impl TlpPacketHeader {
         let mut dw0 = vec![0; 4];
         dw0[..4].clone_from_slice(&bytes[0..4]);
 
-        TlpPacketHeader { bytes: bytes, header: TlpHeader(dw0) }
+        TlpPacketHeader { bytes, header: TlpHeader(dw0) }
     }
 
-    pub fn get_tlp_type(&self) -> Result<TlpType, ()> {
+    pub fn get_tlp_type(&self) -> Result<TlpType, TlpError> {
         let mut dw0 = vec![0; 4];
         dw0[..4].clone_from_slice(&self.bytes[0..4]);
         let tlp_head = TlpHeader(dw0);
@@ -652,7 +664,7 @@ impl TlpPacket {
         let data = ownbytes.drain(4..).collect();
         TlpPacket {
             header: TlpPacketHeader::new(header),
-            data: data,
+            data,
         }
     }
 
