@@ -4,6 +4,17 @@ use std::fmt::Display;
 #[macro_use]
 extern crate bitfield;
 
+/// Errors that can occur when parsing TLP packets
+#[derive(Debug, Clone, PartialEq)]
+pub enum TlpError {
+    /// Invalid format field value (bits don't match any known format)
+    InvalidFormat,
+    /// Invalid type field value (bits don't match any known type encoding)
+    InvalidType,
+    /// Unsupported combination of format and type
+    UnsupportedCombination,
+}
+
 #[repr(u8)]
 #[derive(PartialEq, Copy, Clone)]
 pub enum TlpFmt {
@@ -28,7 +39,7 @@ impl Display for TlpFmt {
 }
 
 impl TryFrom<u32> for TlpFmt {
-    type Error = ();
+    type Error = TlpError;
 
     fn try_from(v: u32) -> Result<Self, Self::Error> {
         match v {
@@ -37,7 +48,7 @@ impl TryFrom<u32> for TlpFmt {
             x if x == TlpFmt::WithDataHeader3DW as u32 => Ok(TlpFmt::WithDataHeader3DW),
             x if x == TlpFmt::WithDataHeader4DW as u32 => Ok(TlpFmt::WithDataHeader4DW),
             x if x == TlpFmt::TlpPrefix as u32 => Ok(TlpFmt::TlpPrefix),
-            _ => Err(()),
+            _ => Err(TlpError::InvalidFormat),
         }
     }
 }
@@ -57,7 +68,7 @@ pub enum TlpFormatEncodingType {
 }
 
 impl TryFrom<u32> for TlpFormatEncodingType {
-    type Error = ();
+    type Error = TlpError;
 
     fn try_from(v: u32) -> Result<Self, Self::Error> {
         match v {
@@ -71,7 +82,7 @@ impl TryFrom<u32> for TlpFormatEncodingType {
             x if x == TlpFormatEncodingType::FetchAtomicOpRequest as u32 	=> Ok(TlpFormatEncodingType::FetchAtomicOpRequest),
             x if x == TlpFormatEncodingType::UnconSwapAtomicOpRequest as u32 => Ok(TlpFormatEncodingType::UnconSwapAtomicOpRequest),
             x if x == TlpFormatEncodingType::CompSwapAtomicOpRequest as u32 => Ok(TlpFormatEncodingType::CompSwapAtomicOpRequest),
-            _ => Err(()),
+            _ => Err(TlpError::InvalidType),
         }
     }
 }
@@ -149,7 +160,7 @@ bitfield! {
 
 impl<T: AsRef<[u8]>> TlpHeader<T> {
 
-    fn get_tlp_type(&self) -> Result<TlpType, ()> {
+    fn get_tlp_type(&self) -> Result<TlpType, TlpError> {
         let tlp_type = self.get_type();
         let tlp_fmt = self.get_format();
 
@@ -160,74 +171,83 @@ impl<T: AsRef<[u8]>> TlpHeader<T> {
                     Ok(TlpFmt::NoDataHeader4DW) => Ok(TlpType::MemReadReq),
                     Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::MemWriteReq),
                     Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::MemWriteReq),
-					_ => Err(()),
+					Ok(_) => Err(TlpError::UnsupportedCombination),
+					Err(e) => Err(e),
                 }
             }
             Ok(TlpFormatEncodingType::MemoryLockRequest) => {
                 match TlpFmt::try_from(tlp_fmt) {
                     Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::MemReadLockReq),
                     Ok(TlpFmt::NoDataHeader4DW) => Ok(TlpType::MemReadLockReq),
-					_ => Err(()),
+					Ok(_) => Err(TlpError::UnsupportedCombination),
+					Err(e) => Err(e),
                 }
             }
 			Ok(TlpFormatEncodingType::IORequest) => {
 				match TlpFmt::try_from(tlp_fmt) {
 					Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::IOReadReq),
 					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::IOWriteReq),
-					_ => Err(()),
+					Ok(_) => Err(TlpError::UnsupportedCombination),
+					Err(e) => Err(e),
 				}
 			}
 			Ok(TlpFormatEncodingType::ConfigType0Request) => {
 				match TlpFmt::try_from(tlp_fmt) {
 					Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::ConfType0ReadReq),
 					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::ConfType0WriteReq),
-					_ => Err(()),
+					Ok(_) => Err(TlpError::UnsupportedCombination),
+					Err(e) => Err(e),
 				}
 			}
             Ok(TlpFormatEncodingType::ConfigType1Request) => {
                     match TlpFmt::try_from(tlp_fmt) {
                             Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::ConfType1ReadReq),
                             Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::ConfType1WriteReq),
-                            _ => Err(()),
+                            Ok(_) => Err(TlpError::UnsupportedCombination),
+							Err(e) => Err(e),
                     }
             }
 			Ok(TlpFormatEncodingType::Completion) => {
-				println!("Completion fmt: {}", tlp_fmt);
 				match TlpFmt::try_from(tlp_fmt) {
 					Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::Cpl),
 					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::CplData),
-					_ => Err(()),
+					Ok(_) => Err(TlpError::UnsupportedCombination),
+					Err(e) => Err(e),
 				}
 			}
 			Ok(TlpFormatEncodingType::CompletionLocked) => {
 				match TlpFmt::try_from(tlp_fmt) {
 					Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::CplLocked),
 					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::CplDataLocked),
-					_ => Err(()),
+					Ok(_) => Err(TlpError::UnsupportedCombination),
+					Err(e) => Err(e),
 				}
 			}
 			Ok(TlpFormatEncodingType::FetchAtomicOpRequest) => {
 				match TlpFmt::try_from(tlp_fmt) {
 					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::FetchAddAtomicOpReq),
 					Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::FetchAddAtomicOpReq),
-					_ => Err(()),
+					Ok(_) => Err(TlpError::UnsupportedCombination),
+					Err(e) => Err(e),
 				}
 			}
 			Ok(TlpFormatEncodingType::UnconSwapAtomicOpRequest) => {
 				match TlpFmt::try_from(tlp_fmt) {
 					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::SwapAtomicOpReq),
 					Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::SwapAtomicOpReq),
-					_ => Err(()),
+					Ok(_) => Err(TlpError::UnsupportedCombination),
+					Err(e) => Err(e),
 				}
 			}
 			Ok(TlpFormatEncodingType::CompSwapAtomicOpRequest) => {
 				match TlpFmt::try_from(tlp_fmt) {
 					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::CompareSwapAtomicOpReq),
 					Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::CompareSwapAtomicOpReq),
-					_ => Err(()),
+					Ok(_) => Err(TlpError::UnsupportedCombination),
+					Err(e) => Err(e),
 				}
 			}
-			Err(_) => Err(())
+			Err(e) => Err(e)
         }
     }
 }
@@ -329,7 +349,7 @@ impl <T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
 ///     // Format of TLP (3DW vs 4DW) is stored in the TLP header
 ///     println!("This TLP size is: {}", tlpfmt);
 ///     // Type LegacyIO vs MemRead vs MemWrite is stored in first DW of TLP
-///     println!("This TLP type is: {}", tlp.get_tlp_type());
+///     println!("This TLP type is: {:?}", tlp.get_tlp_type());
 /// }
 /// ```
 pub fn new_mem_req(bytes: Vec<u8>, format: &TlpFmt) -> Box<dyn MemRequest> {
@@ -450,7 +470,7 @@ bitfield! {
 
 impl <T: AsRef<[u8]>> CompletionRequest for CompletionReqDW23<T> {
     fn cmpl_id(&self) -> u16 {
-        self.get_completer_id() as u16
+        self.get_completer_id()
     }
     fn cmpl_stat(&self) -> u8 {
         self.get_cmpl_stat() as u8
@@ -459,10 +479,10 @@ impl <T: AsRef<[u8]>> CompletionRequest for CompletionReqDW23<T> {
         self.get_bcm() as u8
     }
     fn byte_cnt(&self) -> u16 {
-        self.get_byte_cnt() as u16
+        self.get_byte_cnt()
     }
     fn req_id(&self) -> u16 {
-        self.get_req_id() as u16
+        self.get_req_id()
     }
     fn tag(&self) -> u8 {
         self.get_tag() as u8
@@ -516,7 +536,7 @@ bitfield! {
 
 impl <T: AsRef<[u8]>> MessageRequest for MessageReqDW24<T> {
     fn req_id(&self) -> u16 {
-        self.get_requester_id() as u16
+        self.get_requester_id()
     }
     fn tag(&self) -> u8 {
         self.get_tag() as u8
@@ -556,7 +576,6 @@ pub fn new_msg_req(bytes: Vec<u8>, _format: &TlpFmt) -> Box<dyn MessageRequest> 
 /// TLP Packet Header
 /// Contains bytes for Packet header and informations about TLP type
 pub struct TlpPacketHeader {
-    bytes: Vec<u8>,
     header: TlpHeader<Vec<u8>>,
 }
 
@@ -565,15 +584,11 @@ impl TlpPacketHeader {
         let mut dw0 = vec![0; 4];
         dw0[..4].clone_from_slice(&bytes[0..4]);
 
-        TlpPacketHeader { bytes: bytes, header: TlpHeader(dw0) }
+        TlpPacketHeader { header: TlpHeader(dw0) }
     }
 
-    pub fn get_tlp_type(&self) -> Result<TlpType, ()> {
-        let mut dw0 = vec![0; 4];
-        dw0[..4].clone_from_slice(&self.bytes[0..4]);
-        let tlp_head = TlpHeader(dw0);
-
-        tlp_head.get_tlp_type()
+    pub fn get_tlp_type(&self) -> Result<TlpType, TlpError> {
+        self.header.get_tlp_type()
     }
 
     pub fn get_format(&self) -> u32 {self.header.get_format()}
@@ -652,7 +667,7 @@ impl TlpPacket {
         let data = ownbytes.drain(4..).collect();
         TlpPacket {
             header: TlpPacketHeader::new(header),
-            data: data,
+            data,
         }
     }
 
@@ -664,8 +679,8 @@ impl TlpPacket {
         self.data.to_vec()
     }
 
-    pub fn get_tlp_type(&self) -> TlpType {
-        self.header.get_tlp_type().expect("Cannot Parse TLP!")
+    pub fn get_tlp_type(&self) -> Result<TlpType, TlpError> {
+        self.header.get_tlp_type()
     }
 
     pub fn get_tlp_format(&self) -> TlpFmt {
@@ -685,7 +700,7 @@ mod tests {
         let d = vec![0x04, 0x00, 0x00, 0x01, 0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10];
         let tlp = TlpPacket::new(d);
 
-        assert_eq!(tlp.get_tlp_type(), TlpType::ConfType0ReadReq);
+        assert_eq!(tlp.get_tlp_type().unwrap(), TlpType::ConfType0ReadReq);
         assert_eq!(tlp.get_data(), vec![0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10]);
     }
 
@@ -761,55 +776,55 @@ mod tests {
         let memrd32_header = [0x00, 0x00, 0x10, 0x01, 0x00, 0x00, 0x20, 0x0F, 0xF6, 0x20, 0x00, 0x0C];
 
         let mr = TlpPacketHeader::new(memrd32_header.to_vec());
-        assert_eq!(mr.get_tlp_type().expect("Cannot Parse TLP!"), TlpType::MemReadReq);
+        assert_eq!(mr.get_tlp_type().unwrap(), TlpType::MemReadReq);
     }
 
     #[test]
     fn tlp_header_type() {
 		// Empty packet is still MemREAD: FMT '000' Type '0 0000' Length 0
         let memread = TlpHeader([0x0, 0x0, 0x0, 0x0]);
-        assert_eq!(memread.get_tlp_type().expect("Cannot Parse TLP!"), TlpType::MemReadReq);
+        assert_eq!(memread.get_tlp_type().unwrap(), TlpType::MemReadReq);
 
 		// MemRead32 FMT '000' Type '0 0000'
 		let memread32 = TlpHeader([0x00, 0x00, 0x20, 0x01]);
-		assert_eq!(memread32.get_tlp_type().expect("Cannot Parse TLP!"), TlpType::MemReadReq);
+		assert_eq!(memread32.get_tlp_type().unwrap(), TlpType::MemReadReq);
 
 		// MemWrite32 FMT '010' Type '0 0000'
 		let memwrite32 = TlpHeader([0x40, 0x00, 0x00, 0x01]);
-		assert_eq!(memwrite32.get_tlp_type().expect("Cannot Parse TLP!"), TlpType::MemWriteReq);
+		assert_eq!(memwrite32.get_tlp_type().unwrap(), TlpType::MemWriteReq);
 
 		// CPL without Data: FMT '000' Type '0 1010'
 		let cpl_no_data = TlpHeader([0x0a, 0x00, 0x10, 0x00]);
-		assert_eq!(cpl_no_data.get_tlp_type().expect("Cannot Parse TLP!"), TlpType::Cpl);
+		assert_eq!(cpl_no_data.get_tlp_type().unwrap(), TlpType::Cpl);
 
 		// CPL with Data: FMT '010' Type '0 1010'
 		let cpl_with_data = TlpHeader([0x4a, 0x00, 0x20, 0x40]);
-		assert_eq!(cpl_with_data.get_tlp_type().expect("Cannot Parse TLP!"), TlpType::CplData);
+		assert_eq!(cpl_with_data.get_tlp_type().unwrap(), TlpType::CplData);
 
 		// MemRead 4DW: FMT: '001' Type '0 0000'
 		let memread_4dw = TlpHeader([0x20, 0x00, 0x20, 0x40]);
-		assert_eq!(memread_4dw.get_tlp_type().expect("Cannot Parse TLP!"), TlpType::MemReadReq);
+		assert_eq!(memread_4dw.get_tlp_type().unwrap(), TlpType::MemReadReq);
 
 		// Config Type 0 Read request: FMT: '000' Type '0 0100'
 		let conf_t0_read = TlpHeader([0x04, 0x00, 0x00, 0x01]);
-		assert_eq!(conf_t0_read.get_tlp_type().expect("Cannot Parse TLP!"), TlpType::ConfType0ReadReq);
+		assert_eq!(conf_t0_read.get_tlp_type().unwrap(), TlpType::ConfType0ReadReq);
 
 		// Config Type 0 Write request: FMT: '010' Type '0 0100'
 		let conf_t0_write = TlpHeader([0x44, 0x00, 0x00, 0x01]);
-		assert_eq!(conf_t0_write.get_tlp_type().expect("Cannot Parse TLP!"), TlpType::ConfType0WriteReq);
+		assert_eq!(conf_t0_write.get_tlp_type().unwrap(), TlpType::ConfType0WriteReq);
 
         // Config Type 1 Read request: FMT: '000' Type '0 0101'
         let conf_t1_read = TlpHeader([0x05, 0x88, 0x80, 0x01]);
-               assert_eq!(conf_t1_read.get_tlp_type().expect("Cannot Parse TLP!"), TlpType::ConfType1ReadReq);
+               assert_eq!(conf_t1_read.get_tlp_type().unwrap(), TlpType::ConfType1ReadReq);
 
         // Config Type 1 Read request: FMT: '010' Type '0 0101'
         let conf_t1_write = TlpHeader([0x45, 0x88, 0x80, 0x01]);
-               assert_eq!(conf_t1_write.get_tlp_type().expect("Cannot Parse TLP!"), TlpType::ConfType1WriteReq);
+               assert_eq!(conf_t1_write.get_tlp_type().unwrap(), TlpType::ConfType1WriteReq);
 
         // HeaderLog: 04000001 0000220f 01070000 af36fc70
         // HeaderLog: 60009001 4000000f 00000280 4047605c
         let memwrite64 = TlpHeader([0x60, 0x00, 0x90, 0x01]);
-        assert_eq!(memwrite64.get_tlp_type().expect("Cannot Parse TLP!"), TlpType::MemWriteReq);
+        assert_eq!(memwrite64.get_tlp_type().unwrap(), TlpType::MemWriteReq);
     }
 
     #[test]
@@ -848,5 +863,43 @@ mod tests {
         assert_eq!(bits_locations.get_attr(), 0x3);
         assert_eq!(bits_locations.get_at(), 0x3);
         assert_eq!(bits_locations.get_length(), 0x3ff);
+    }
+
+    #[test]
+    fn test_invalid_format_error() {
+        // Format field with invalid value (e.g., 0b101 = 5)
+        let invalid_fmt = TlpHeader([0xa0, 0x00, 0x00, 0x01]); // FMT='101' Type='00000'
+        let result = invalid_fmt.get_tlp_type();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), TlpError::InvalidFormat);
+    }
+
+    #[test]
+    fn test_invalid_type_error() {
+        // Type field with invalid encoding (e.g., 0b01111 = 15)
+        let invalid_type = TlpHeader([0x0f, 0x00, 0x00, 0x01]); // FMT='000' Type='01111'
+        let result = invalid_type.get_tlp_type();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), TlpError::InvalidType);
+    }
+
+    #[test]
+    fn test_unsupported_combination_error() {
+        // Valid format and type but unsupported combination
+        // IO Request with 4DW header (not valid)
+        let invalid_combo = TlpHeader([0x22, 0x00, 0x00, 0x01]); // FMT='001' Type='00010' (IO Request 4DW)
+        let result = invalid_combo.get_tlp_type();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), TlpError::UnsupportedCombination);
+    }
+
+    #[test]
+    fn test_tlp_packet_invalid_type() {
+        // Test that TlpPacket::get_tlp_type properly returns error
+        let invalid_data = vec![0x0f, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
+        let packet = TlpPacket::new(invalid_data);
+        let result = packet.get_tlp_type();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), TlpError::InvalidType);
     }
 }
