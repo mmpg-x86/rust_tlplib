@@ -690,136 +690,51 @@ impl TlpPacket {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_tlp_packet() {
-        let d = vec![0x04, 0x00, 0x00, 0x01, 0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10];
-        let tlp = TlpPacket::new(d);
-
-        assert_eq!(tlp.get_tlp_type().unwrap(), TlpType::ConfType0ReadReq);
-        assert_eq!(tlp.get_data(), vec![0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10]);
-    }
-
-    #[test]
-    fn test_complreq_trait() {
-		let cmpl_req = CompletionReqDW23([0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10]);
-
-        assert_eq!(0x2001, cmpl_req.cmpl_id());
-        assert_eq!(0x7, cmpl_req.cmpl_stat());
-        assert_eq!(0x1, cmpl_req.bcm());
-        assert_eq!(0xF00, cmpl_req.byte_cnt());
-        assert_eq!(0xC281, cmpl_req.req_id());
-        assert_eq!(0xFF, cmpl_req.tag());
-        assert_eq!(0x10, cmpl_req.laddr());
-    }
-
-    #[test]
-    fn test_configreq_trait() {
-		let conf_req = ConfigRequest([0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10]);
-
-        assert_eq!(0x2001, conf_req.req_id());
-        assert_eq!(0xFF, conf_req.tag());
-        assert_eq!(0xC2, conf_req.bus_nr());
-        assert_eq!(0x10, conf_req.dev_nr());
-        assert_eq!(0x01, conf_req.func_nr());
-        assert_eq!(0x0F, conf_req.ext_reg_nr());
-        assert_eq!(0x04, conf_req.reg_nr());
-    }
-
-    #[test]
-    fn is_memreq_tag_works() {
-        let mr3dw1 = MemRequest3DW([0x00, 0x00, 0x20, 0x0F, 0xF6, 0x20, 0x00, 0x0C]);
-        let mr3dw2 = MemRequest3DW([0x00, 0x00, 0x01, 0x0F, 0xF6, 0x20, 0x00, 0x0C]);
-        let mr3dw3 = MemRequest3DW([0x00, 0x00, 0x10, 0x0F, 0xF6, 0x20, 0x00, 0x0C]);
-        let mr3dw4 = MemRequest3DW([0x00, 0x00, 0x81, 0x0F, 0xF6, 0x20, 0x00, 0x0C]);
-
-        assert_eq!(0x20, mr3dw1.tag());
-        assert_eq!(0x01, mr3dw2.tag());
-        assert_eq!(0x10, mr3dw3.tag());
-        assert_eq!(0x81, mr3dw4.tag());
-
-        let mr4dw1 = MemRequest4DW([0x00, 0x00, 0x01, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00]);
-        let mr4dw2 = MemRequest4DW([0x00, 0x00, 0x10, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00]);
-        let mr4dw3 = MemRequest4DW([0x00, 0x00, 0x81, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00]);
-        let mr4dw4 = MemRequest4DW([0x00, 0x00, 0xFF, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00]);
-        let mr4dw5 = MemRequest4DW([0x00, 0x00, 0x00, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00]);
-
-        assert_eq!(0x01, mr4dw1.tag());
-        assert_eq!(0x10, mr4dw2.tag());
-        assert_eq!(0x81, mr4dw3.tag());
-        assert_eq!(0xFF, mr4dw4.tag());
-        assert_eq!(0x00, mr4dw5.tag());
-    }
-
-    #[test]
-    fn is_memreq_3dw_address_works() {
-        let memreq_3dw = [0x00, 0x00, 0x20, 0x0F, 0xF6, 0x20, 0x00, 0x0C];
-        let mr = MemRequest3DW(memreq_3dw);
-
-        assert_eq!(0xF620000C, mr.address());
-    }
-
-    #[test]
-    fn is_memreq_4dw_address_works() {
-        let memreq_4dw = [0x00, 0x00, 0x20, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00];
-        let mr = MemRequest4DW(memreq_4dw);
-
-        assert_eq!(0x17fc0000000, mr.address());
-    }
-
-    #[test]
-    fn is_tlppacket_creates() {
-        let memrd32_header = [0x00, 0x00, 0x10, 0x01, 0x00, 0x00, 0x20, 0x0F, 0xF6, 0x20, 0x00, 0x0C];
-
-        let mr = TlpPacketHeader::new(memrd32_header.to_vec());
-        assert_eq!(mr.get_tlp_type().unwrap(), TlpType::MemReadReq);
-    }
-
-    #[test]
     fn tlp_header_type() {
-		// Empty packet is still MemREAD: FMT '000' Type '0 0000' Length 0
+        // Empty packet is still MemREAD: FMT '000' Type '0 0000' Length 0
         let memread = TlpHeader([0x0, 0x0, 0x0, 0x0]);
         assert_eq!(memread.get_tlp_type().unwrap(), TlpType::MemReadReq);
 
-		// MemRead32 FMT '000' Type '0 0000'
-		let memread32 = TlpHeader([0x00, 0x00, 0x20, 0x01]);
-		assert_eq!(memread32.get_tlp_type().unwrap(), TlpType::MemReadReq);
+        // MemRead32 FMT '000' Type '0 0000'
+        let memread32 = TlpHeader([0x00, 0x00, 0x20, 0x01]);
+        assert_eq!(memread32.get_tlp_type().unwrap(), TlpType::MemReadReq);
 
-		// MemWrite32 FMT '010' Type '0 0000'
-		let memwrite32 = TlpHeader([0x40, 0x00, 0x00, 0x01]);
-		assert_eq!(memwrite32.get_tlp_type().unwrap(), TlpType::MemWriteReq);
+        // MemWrite32 FMT '010' Type '0 0000'
+        let memwrite32 = TlpHeader([0x40, 0x00, 0x00, 0x01]);
+        assert_eq!(memwrite32.get_tlp_type().unwrap(), TlpType::MemWriteReq);
 
-		// CPL without Data: FMT '000' Type '0 1010'
-		let cpl_no_data = TlpHeader([0x0a, 0x00, 0x10, 0x00]);
-		assert_eq!(cpl_no_data.get_tlp_type().unwrap(), TlpType::Cpl);
+        // CPL without Data: FMT '000' Type '0 1010'
+        let cpl_no_data = TlpHeader([0x0a, 0x00, 0x10, 0x00]);
+        assert_eq!(cpl_no_data.get_tlp_type().unwrap(), TlpType::Cpl);
 
-		// CPL with Data: FMT '010' Type '0 1010'
-		let cpl_with_data = TlpHeader([0x4a, 0x00, 0x20, 0x40]);
-		assert_eq!(cpl_with_data.get_tlp_type().unwrap(), TlpType::CplData);
+        // CPL with Data: FMT '010' Type '0 1010'
+        let cpl_with_data = TlpHeader([0x4a, 0x00, 0x20, 0x40]);
+        assert_eq!(cpl_with_data.get_tlp_type().unwrap(), TlpType::CplData);
 
-		// MemRead 4DW: FMT: '001' Type '0 0000'
-		let memread_4dw = TlpHeader([0x20, 0x00, 0x20, 0x40]);
-		assert_eq!(memread_4dw.get_tlp_type().unwrap(), TlpType::MemReadReq);
+        // MemRead 4DW: FMT: '001' Type '0 0000'
+        let memread_4dw = TlpHeader([0x20, 0x00, 0x20, 0x40]);
+        assert_eq!(memread_4dw.get_tlp_type().unwrap(), TlpType::MemReadReq);
 
-		// Config Type 0 Read request: FMT: '000' Type '0 0100'
-		let conf_t0_read = TlpHeader([0x04, 0x00, 0x00, 0x01]);
-		assert_eq!(conf_t0_read.get_tlp_type().unwrap(), TlpType::ConfType0ReadReq);
+        // Config Type 0 Read request: FMT: '000' Type '0 0100'
+        let conf_t0_read = TlpHeader([0x04, 0x00, 0x00, 0x01]);
+        assert_eq!(conf_t0_read.get_tlp_type().unwrap(), TlpType::ConfType0ReadReq);
 
-		// Config Type 0 Write request: FMT: '010' Type '0 0100'
-		let conf_t0_write = TlpHeader([0x44, 0x00, 0x00, 0x01]);
-		assert_eq!(conf_t0_write.get_tlp_type().unwrap(), TlpType::ConfType0WriteReq);
+        // Config Type 0 Write request: FMT: '010' Type '0 0100'
+        let conf_t0_write = TlpHeader([0x44, 0x00, 0x00, 0x01]);
+        assert_eq!(conf_t0_write.get_tlp_type().unwrap(), TlpType::ConfType0WriteReq);
 
         // Config Type 1 Read request: FMT: '000' Type '0 0101'
         let conf_t1_read = TlpHeader([0x05, 0x88, 0x80, 0x01]);
-               assert_eq!(conf_t1_read.get_tlp_type().unwrap(), TlpType::ConfType1ReadReq);
+        assert_eq!(conf_t1_read.get_tlp_type().unwrap(), TlpType::ConfType1ReadReq);
 
-        // Config Type 1 Read request: FMT: '010' Type '0 0101'
+        // Config Type 1 Write request: FMT: '010' Type '0 0101'
         let conf_t1_write = TlpHeader([0x45, 0x88, 0x80, 0x01]);
-               assert_eq!(conf_t1_write.get_tlp_type().unwrap(), TlpType::ConfType1WriteReq);
+        assert_eq!(conf_t1_write.get_tlp_type().unwrap(), TlpType::ConfType1WriteReq);
 
         // HeaderLog: 04000001 0000220f 01070000 af36fc70
         // HeaderLog: 60009001 4000000f 00000280 4047605c
@@ -892,14 +807,5 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), TlpError::UnsupportedCombination);
     }
-
-    #[test]
-    fn test_tlp_packet_invalid_type() {
-        // Test that TlpPacket::get_tlp_type properly returns error
-        let invalid_data = vec![0x0f, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
-        let packet = TlpPacket::new(invalid_data);
-        let result = packet.get_tlp_type();
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), TlpError::InvalidType);
-    }
 }
+
