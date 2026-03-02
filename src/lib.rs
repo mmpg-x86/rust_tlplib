@@ -339,7 +339,7 @@ impl <T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
 /// let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
 /// let tlp = TlpPacket::new(bytes);
 ///
-/// if let Ok(tlpfmt) = TlpFmt::try_from(tlp.get_tlp_format()) {
+/// if let Ok(tlpfmt) = tlp.get_tlp_format() {
 ///     // MemRequest contain only fields specific to PCI Memory Requests
 ///     let mem_req: Box<dyn MemRequest> = new_mem_req(tlp.get_data(), &tlpfmt);
 ///
@@ -390,7 +390,7 @@ pub trait ConfigurationRequest {
 /// let bytes = vec![0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
 /// let tlp = TlpPacket::new(bytes);
 ///
-/// if let Ok(tlpfmt) = TlpFmt::try_from(tlp.get_tlp_format()) {
+/// if let Ok(tlpfmt) = tlp.get_tlp_format() {
 ///     let config_req: Box<dyn ConfigurationRequest> = new_conf_req(tlp.get_data(), &tlpfmt);
 ///
 ///     //println!("Configuration Request Bus: {:x}", config_req.bus_nr());
@@ -629,7 +629,7 @@ impl TlpPacketHeader {
 /// let header = packet.get_header();
 /// // TLP Type tells us what is this packet
 /// let tlp_type = header.get_tlp_type().unwrap();
-/// let tlp_format = packet.get_tlp_format();
+/// let tlp_format = packet.get_tlp_format().unwrap();
 /// let requester_id;
 /// match (tlp_type) {
 ///      TlpType::MemReadReq |
@@ -683,10 +683,8 @@ impl TlpPacket {
         self.header.get_tlp_type()
     }
 
-    pub fn get_tlp_format(&self) -> TlpFmt {
-        let fmt : TlpFmt = TlpFmt::try_from(self.header.get_format()).unwrap();
-
-        fmt
+    pub fn get_tlp_format(&self) -> Result<TlpFmt, TlpError> {
+        TlpFmt::try_from(self.header.get_format())
     }
 }
 
@@ -806,6 +804,130 @@ mod tests {
         let result = invalid_combo.get_tlp_type();
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), TlpError::UnsupportedCombination);
+    }
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    /// Build a DW0-only TlpHeader from a 3-bit fmt and 5-bit type field.
+    /// byte0 layout (MSB0): bits[7:5] = fmt, bits[4:0] = type
+    fn dw0(fmt: u8, typ: u8) -> TlpHeader<[u8; 4]> {
+        TlpHeader([(fmt << 5) | (typ & 0x1f), 0x00, 0x00, 0x00])
+    }
+
+    // ── happy path: every currently-supported (fmt, type) pair ────────────────
+
+    #[test]
+    fn header_decode_supported_pairs() {
+        const FMT_3DW_NO_DATA:   u8 = 0b000;
+        const FMT_4DW_NO_DATA:   u8 = 0b001;
+        const FMT_3DW_WITH_DATA: u8 = 0b010;
+        const FMT_4DW_WITH_DATA: u8 = 0b011;
+
+        const TY_MEM:        u8 = 0b00000;
+        const TY_MEM_LK:     u8 = 0b00001;
+        const TY_IO:         u8 = 0b00010;
+        const TY_CFG0:       u8 = 0b00100;
+        const TY_CFG1:       u8 = 0b00101;
+        const TY_CPL:        u8 = 0b01010;
+        const TY_CPL_LK:     u8 = 0b01011;
+        const TY_ATOM_FETCH: u8 = 0b01100;
+        const TY_ATOM_SWAP:  u8 = 0b01101;
+        const TY_ATOM_CAS:   u8 = 0b01110;
+
+        // Memory Request: NoData → Read, WithData → Write; both 3DW and 4DW
+        assert_eq!(dw0(FMT_3DW_NO_DATA,   TY_MEM).get_tlp_type().unwrap(), TlpType::MemReadReq);
+        assert_eq!(dw0(FMT_4DW_NO_DATA,   TY_MEM).get_tlp_type().unwrap(), TlpType::MemReadReq);
+        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_MEM).get_tlp_type().unwrap(), TlpType::MemWriteReq);
+        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_MEM).get_tlp_type().unwrap(), TlpType::MemWriteReq);
+
+        // Memory Lock Request: NoData only (3DW and 4DW)
+        assert_eq!(dw0(FMT_3DW_NO_DATA, TY_MEM_LK).get_tlp_type().unwrap(), TlpType::MemReadLockReq);
+        assert_eq!(dw0(FMT_4DW_NO_DATA, TY_MEM_LK).get_tlp_type().unwrap(), TlpType::MemReadLockReq);
+
+        // IO Request: 3DW only; NoData → Read, WithData → Write
+        assert_eq!(dw0(FMT_3DW_NO_DATA,   TY_IO).get_tlp_type().unwrap(), TlpType::IOReadReq);
+        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_IO).get_tlp_type().unwrap(), TlpType::IOWriteReq);
+
+        // Config Type 0: 3DW only
+        assert_eq!(dw0(FMT_3DW_NO_DATA,   TY_CFG0).get_tlp_type().unwrap(), TlpType::ConfType0ReadReq);
+        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_CFG0).get_tlp_type().unwrap(), TlpType::ConfType0WriteReq);
+
+        // Config Type 1: 3DW only
+        assert_eq!(dw0(FMT_3DW_NO_DATA,   TY_CFG1).get_tlp_type().unwrap(), TlpType::ConfType1ReadReq);
+        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_CFG1).get_tlp_type().unwrap(), TlpType::ConfType1WriteReq);
+
+        // Completion: 3DW only; NoData → Cpl, WithData → CplData
+        assert_eq!(dw0(FMT_3DW_NO_DATA,   TY_CPL).get_tlp_type().unwrap(), TlpType::Cpl);
+        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_CPL).get_tlp_type().unwrap(), TlpType::CplData);
+
+        // Completion Locked: 3DW only
+        assert_eq!(dw0(FMT_3DW_NO_DATA,   TY_CPL_LK).get_tlp_type().unwrap(), TlpType::CplLocked);
+        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_CPL_LK).get_tlp_type().unwrap(), TlpType::CplDataLocked);
+
+        // Atomics: WithData only (3DW and 4DW)
+        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_ATOM_FETCH).get_tlp_type().unwrap(), TlpType::FetchAddAtomicOpReq);
+        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_ATOM_FETCH).get_tlp_type().unwrap(), TlpType::FetchAddAtomicOpReq);
+
+        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_ATOM_SWAP).get_tlp_type().unwrap(), TlpType::SwapAtomicOpReq);
+        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_ATOM_SWAP).get_tlp_type().unwrap(), TlpType::SwapAtomicOpReq);
+
+        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_ATOM_CAS).get_tlp_type().unwrap(), TlpType::CompareSwapAtomicOpReq);
+        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_ATOM_CAS).get_tlp_type().unwrap(), TlpType::CompareSwapAtomicOpReq);
+    }
+
+    // ── negative path: every illegal (fmt, type) pair → UnsupportedCombination ─
+
+    #[test]
+    fn header_decode_rejects_unsupported_combinations() {
+        const FMT_3DW_NO_DATA:   u8 = 0b000;
+        const FMT_4DW_NO_DATA:   u8 = 0b001;
+        const FMT_3DW_WITH_DATA: u8 = 0b010;
+        const FMT_4DW_WITH_DATA: u8 = 0b011;
+        const FMT_PREFIX:        u8 = 0b100;
+
+        const TY_MEM_LK:     u8 = 0b00001;
+        const TY_IO:         u8 = 0b00010;
+        const TY_CFG0:       u8 = 0b00100;
+        const TY_CFG1:       u8 = 0b00101;
+        const TY_CPL:        u8 = 0b01010;
+        const TY_CPL_LK:     u8 = 0b01011;
+        const TY_ATOM_FETCH: u8 = 0b01100;
+        const TY_ATOM_SWAP:  u8 = 0b01101;
+        const TY_ATOM_CAS:   u8 = 0b01110;
+
+        // IO: 4DW variants are illegal
+        assert_eq!(dw0(FMT_4DW_NO_DATA,   TY_IO).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_IO).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+
+        // Config: 4DW variants are illegal (configs are always 3DW)
+        assert_eq!(dw0(FMT_4DW_NO_DATA,   TY_CFG0).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_CFG0).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_4DW_NO_DATA,   TY_CFG1).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_CFG1).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+
+        // Completions: 4DW variants are illegal
+        assert_eq!(dw0(FMT_4DW_NO_DATA,   TY_CPL).get_tlp_type().unwrap_err(),    TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_CPL).get_tlp_type().unwrap_err(),    TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_4DW_NO_DATA,   TY_CPL_LK).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_CPL_LK).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+
+        // Atomics: NoData variants are illegal (atomics always carry data)
+        assert_eq!(dw0(FMT_3DW_NO_DATA, TY_ATOM_FETCH).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_4DW_NO_DATA, TY_ATOM_FETCH).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_3DW_NO_DATA, TY_ATOM_SWAP).get_tlp_type().unwrap_err(),  TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_4DW_NO_DATA, TY_ATOM_SWAP).get_tlp_type().unwrap_err(),  TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_3DW_NO_DATA, TY_ATOM_CAS).get_tlp_type().unwrap_err(),   TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_4DW_NO_DATA, TY_ATOM_CAS).get_tlp_type().unwrap_err(),   TlpError::UnsupportedCombination);
+
+        // MemReadLock: WithData variants are illegal (lock is a read-only operation)
+        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_MEM_LK).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_MEM_LK).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+
+        // TlpPrefix fmt (0b100) is a valid format value but illegal for all
+        // request/completion type encodings — currently hits UnsupportedCombination
+        assert_eq!(dw0(FMT_PREFIX, TY_IO).get_tlp_type().unwrap_err(),   TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_PREFIX, TY_CPL).get_tlp_type().unwrap_err(),  TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_PREFIX, TY_CFG0).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
     }
 }
 

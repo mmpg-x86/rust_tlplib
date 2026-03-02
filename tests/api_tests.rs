@@ -175,7 +175,8 @@ fn tlp_packet_get_tlp_type_error_invalid_type() {
 fn tlp_packet_get_tlp_format_exists() {
     let data = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
     let packet = TlpPacket::new(data);
-    let _format: TlpFmt = packet.get_tlp_format();
+    let format: Result<TlpFmt, _> = packet.get_tlp_format();
+    assert!(format.is_ok());
 }
 
 #[test]
