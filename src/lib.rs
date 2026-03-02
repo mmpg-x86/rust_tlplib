@@ -13,6 +13,8 @@ pub enum TlpError {
     InvalidType,
     /// Unsupported combination of format and type
     UnsupportedCombination,
+    /// Payload/header byte slice is too short to contain the expected fields
+    InvalidLength,
 }
 
 #[repr(u8)]
@@ -51,6 +53,21 @@ impl TryFrom<u32> for TlpFmt {
             _ => Err(TlpError::InvalidFormat),
         }
     }
+}
+
+/// Atomic operation discriminant
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum AtomicOp {
+    FetchAdd,
+    Swap,
+    CompareSwap,
+}
+
+/// Operand width — derived from TLP format: 3DW → 32-bit, 4DW → 64-bit
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum AtomicWidth {
+    W32,
+    W64,
 }
 
 #[derive(PartialEq)]
@@ -573,6 +590,118 @@ pub fn new_msg_req(bytes: Vec<u8>, _format: &TlpFmt) -> Box<dyn MessageRequest> 
 	Box::new(MessageReqDW24(bytes))
 }
 
+/// Atomic Request trait: header fields and operand(s) for atomic op TLPs.
+/// Use `new_atomic_req()` to obtain a trait object from raw packet bytes.
+pub trait AtomicRequest: std::fmt::Debug {
+    fn op(&self) -> AtomicOp;
+    fn width(&self) -> AtomicWidth;
+    fn req_id(&self) -> u16;
+    fn tag(&self) -> u8;
+    fn address(&self) -> u64;
+    /// Primary operand: addend (FetchAdd), new value (Swap), compare value (CAS)
+    fn operand0(&self) -> u64;
+    /// Second operand: swap value for CAS; `None` for FetchAdd and Swap
+    fn operand1(&self) -> Option<u64>;
+}
+
+#[derive(Debug)]
+struct AtomicReq {
+    op:       AtomicOp,
+    width:    AtomicWidth,
+    req_id:   u16,
+    tag:      u8,
+    address:  u64,
+    operand0: u64,
+    operand1: Option<u64>,
+}
+
+impl AtomicRequest for AtomicReq {
+    fn op(&self)       -> AtomicOp    { self.op }
+    fn width(&self)    -> AtomicWidth { self.width }
+    fn req_id(&self)   -> u16         { self.req_id }
+    fn tag(&self)      -> u8          { self.tag }
+    fn address(&self)  -> u64         { self.address }
+    fn operand0(&self) -> u64         { self.operand0 }
+    fn operand1(&self) -> Option<u64> { self.operand1 }
+}
+
+fn read_operand_be(b: &[u8], off: usize, width: AtomicWidth) -> u64 {
+    match width {
+        AtomicWidth::W32 => u32::from_be_bytes([b[off], b[off+1], b[off+2], b[off+3]]) as u64,
+        AtomicWidth::W64 => u64::from_be_bytes([
+            b[off], b[off+1], b[off+2], b[off+3],
+            b[off+4], b[off+5], b[off+6], b[off+7],
+        ]),
+    }
+}
+
+/// Parse an atomic TLP request from a `TlpPacket`.
+///
+/// The TLP type and format are extracted from the packet header.
+/// Returns `Err(TlpError::UnsupportedCombination)` if the packet does not
+/// encode one of the three atomic op types, and `Err(TlpError::InvalidLength)`
+/// if the data payload has the wrong size for the expected header and operands.
+///
+/// # Examples
+///
+/// ```
+/// use rtlp_lib::{TlpPacket, AtomicRequest, new_atomic_req};
+///
+/// // FetchAdd 3DW: DW0 byte0 = (fmt=0b010 << 5) | typ=0b01100 = 0x4C
+/// let bytes = vec![
+///     0x4C, 0x00, 0x00, 0x00, // DW0: WithDataHeader3DW / FetchAdd
+///     0xAB, 0xCD, 0x01, 0x00, // DW1: req_id=0xABCD tag=1 BE=0
+///     0x00, 0x00, 0x10, 0x00, // DW2: address32=0x0000_1000
+///     0x00, 0x00, 0x00, 0x04, // operand: addend=4
+/// ];
+/// let pkt = TlpPacket::new(bytes);
+/// let ar = new_atomic_req(&pkt).unwrap();
+/// assert_eq!(ar.req_id(),   0xABCD);
+/// assert_eq!(ar.operand0(), 4);
+/// assert!(ar.operand1().is_none());
+/// ```
+pub fn new_atomic_req(pkt: &TlpPacket) -> Result<Box<dyn AtomicRequest>, TlpError> {
+    let tlp_type = pkt.get_tlp_type()?;
+    let format   = pkt.get_tlp_format()?;
+    let bytes    = pkt.get_data();
+
+    let op = match tlp_type {
+        TlpType::FetchAddAtomicOpReq    => AtomicOp::FetchAdd,
+        TlpType::SwapAtomicOpReq        => AtomicOp::Swap,
+        TlpType::CompareSwapAtomicOpReq => AtomicOp::CompareSwap,
+        _                               => return Err(TlpError::UnsupportedCombination),
+    };
+    let (width, hdr_len) = match format {
+        TlpFmt::WithDataHeader3DW => (AtomicWidth::W32, 8usize),
+        TlpFmt::WithDataHeader4DW => (AtomicWidth::W64, 12usize),
+        _                         => return Err(TlpError::UnsupportedCombination),
+    };
+
+    let op_size = match width { AtomicWidth::W32 => 4usize, AtomicWidth::W64 => 8usize };
+    let num_ops = if matches!(op, AtomicOp::CompareSwap) { 2 } else { 1 };
+    let needed  = hdr_len + op_size * num_ops;
+    if bytes.len() != needed { return Err(TlpError::InvalidLength); }
+
+    let req_id  = u16::from_be_bytes([bytes[0], bytes[1]]);
+    let tag     = bytes[2];
+    let address = match width {
+        AtomicWidth::W32 => u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]) as u64,
+        AtomicWidth::W64 => u64::from_be_bytes([
+            bytes[4], bytes[5], bytes[6],  bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11],
+        ]),
+    };
+
+    let operand0 = read_operand_be(&bytes, hdr_len, width);
+    let operand1 = if matches!(op, AtomicOp::CompareSwap) {
+        Some(read_operand_be(&bytes, hdr_len + op_size, width))
+    } else {
+        None
+    };
+
+    Ok(Box::new(AtomicReq { op, width, req_id, tag, address, operand0, operand1 }))
+}
+
 /// TLP Packet Header
 /// Contains bytes for Packet header and informations about TLP type
 pub struct TlpPacketHeader {
@@ -1000,6 +1129,236 @@ mod tests {
         assert_eq!(mr.req_id(),  0xBEEF);
         assert_eq!(mr.tag(),     0xA5);
         assert_eq!(mr.address(), 0x1122_3344_5566_7788);
+    }
+
+    // ── atomic tier-B: operand parsing via new_atomic_req() ───────────────────
+
+    #[test]
+    fn fetchadd_3dw_operand() {
+        // FetchAdd 3DW (W32): single 32-bit addend after the 8-byte header
+        //   DW1: req_id=0xDEAD  tag=0x42  BE=0x00
+        //   DW2: address32=0xC001_0004
+        //   op0: addend=0x0000_000A
+        let payload = [
+            0xDE, 0xAD, 0x42, 0x00, // req_id, tag, BE
+            0xC0, 0x01, 0x00, 0x04, // address32
+            0x00, 0x00, 0x00, 0x0A, // addend (W32)
+        ];
+        let pkt = TlpPacket::new(mk_tlp(0b010, 0b01100, &payload));
+        let ar  = new_atomic_req(&pkt).unwrap();
+
+        assert_eq!(ar.op(),       AtomicOp::FetchAdd);
+        assert_eq!(ar.width(),    AtomicWidth::W32);
+        assert_eq!(ar.req_id(),   0xDEAD);
+        assert_eq!(ar.tag(),      0x42);
+        assert_eq!(ar.address(),  0xC001_0004);
+        assert_eq!(ar.operand0(), 0x0A);
+        assert!(ar.operand1().is_none());
+    }
+
+    #[test]
+    fn fetchadd_4dw_operand() {
+        // FetchAdd 4DW (W64): single 64-bit addend after the 12-byte header
+        //   DW1: req_id=0x0042  tag=0xBB  BE=0x00
+        //   DW2-DW3: address64=0x0000_0001_0000_0000
+        //   op0: addend=0xFFFF_FFFF_FFFF_FFFF
+        let payload = [
+            0x00, 0x42, 0xBB, 0x00, // req_id, tag, BE
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, // address64
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // addend (W64)
+        ];
+        let pkt = TlpPacket::new(mk_tlp(0b011, 0b01100, &payload));
+        let ar  = new_atomic_req(&pkt).unwrap();
+
+        assert_eq!(ar.op(),       AtomicOp::FetchAdd);
+        assert_eq!(ar.width(),    AtomicWidth::W64);
+        assert_eq!(ar.req_id(),   0x0042);
+        assert_eq!(ar.tag(),      0xBB);
+        assert_eq!(ar.address(),  0x0000_0001_0000_0000);
+        assert_eq!(ar.operand0(), 0xFFFF_FFFF_FFFF_FFFF);
+        assert!(ar.operand1().is_none());
+    }
+
+    #[test]
+    fn swap_3dw_operand() {
+        // Swap 3DW (W32): single 32-bit swap value
+        //   DW1: req_id=0x1111  tag=0x05  BE=0x00
+        //   DW2: address32=0xF000_0008
+        //   op0: new_value=0xABCD_EF01
+        let payload = [
+            0x11, 0x11, 0x05, 0x00, // req_id, tag, BE
+            0xF0, 0x00, 0x00, 0x08, // address32
+            0xAB, 0xCD, 0xEF, 0x01, // new_value (W32)
+        ];
+        let pkt = TlpPacket::new(mk_tlp(0b010, 0b01101, &payload));
+        let ar  = new_atomic_req(&pkt).unwrap();
+
+        assert_eq!(ar.op(),       AtomicOp::Swap);
+        assert_eq!(ar.width(),    AtomicWidth::W32);
+        assert_eq!(ar.req_id(),   0x1111);
+        assert_eq!(ar.tag(),      0x05);
+        assert_eq!(ar.address(),  0xF000_0008);
+        assert_eq!(ar.operand0(), 0xABCD_EF01);
+        assert!(ar.operand1().is_none());
+    }
+
+    #[test]
+    fn cas_3dw_two_operands() {
+        // CAS 3DW (W32): compare then swap — two 32-bit operands
+        //   DW1: req_id=0xABCD  tag=0x07  BE=0x00
+        //   DW2: address32=0x0000_4000
+        //   op0: compare=0xCAFE_BABE
+        //   op1: swap=0xDEAD_BEEF
+        let payload = [
+            0xAB, 0xCD, 0x07, 0x00, // req_id, tag, BE
+            0x00, 0x00, 0x40, 0x00, // address32
+            0xCA, 0xFE, 0xBA, 0xBE, // compare (W32)
+            0xDE, 0xAD, 0xBE, 0xEF, // swap    (W32)
+        ];
+        let pkt = TlpPacket::new(mk_tlp(0b010, 0b01110, &payload));
+        let ar  = new_atomic_req(&pkt).unwrap();
+
+        assert_eq!(ar.op(),       AtomicOp::CompareSwap);
+        assert_eq!(ar.width(),    AtomicWidth::W32);
+        assert_eq!(ar.req_id(),   0xABCD);
+        assert_eq!(ar.tag(),      0x07);
+        assert_eq!(ar.address(),  0x0000_4000);
+        assert_eq!(ar.operand0(), 0xCAFE_BABE);
+        assert_eq!(ar.operand1(), Some(0xDEAD_BEEF));
+    }
+
+    #[test]
+    fn cas_4dw_two_operands() {
+        // CAS 4DW (W64): compare then swap — two 64-bit operands
+        //   DW1: req_id=0x1234  tag=0xAA  BE=0x00
+        //   DW2-DW3: address64=0xFFFF_FFFF_0000_0000
+        //   op0: compare=0x0101_0101_0202_0202
+        //   op1: swap=0x0303_0303_0404_0404
+        let payload = [
+            0x12, 0x34, 0xAA, 0x00, // req_id, tag, BE
+            0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, // address64
+            0x01, 0x01, 0x01, 0x01, 0x02, 0x02, 0x02, 0x02, // compare (W64)
+            0x03, 0x03, 0x03, 0x03, 0x04, 0x04, 0x04, 0x04, // swap    (W64)
+        ];
+        let pkt = TlpPacket::new(mk_tlp(0b011, 0b01110, &payload));
+        let ar  = new_atomic_req(&pkt).unwrap();
+
+        assert_eq!(ar.op(),       AtomicOp::CompareSwap);
+        assert_eq!(ar.width(),    AtomicWidth::W64);
+        assert_eq!(ar.req_id(),   0x1234);
+        assert_eq!(ar.tag(),      0xAA);
+        assert_eq!(ar.address(),  0xFFFF_FFFF_0000_0000);
+        assert_eq!(ar.operand0(), 0x0101_0101_0202_0202);
+        assert_eq!(ar.operand1(), Some(0x0303_0303_0404_0404));
+    }
+
+    #[test]
+    fn atomic_req_rejects_wrong_tlp_type() {
+        // MemRead type is not an atomic — should get UnsupportedCombination
+        let pkt = TlpPacket::new(mk_tlp(0b000, 0b00000, &[0u8; 16]));
+        assert_eq!(new_atomic_req(&pkt).err().unwrap(), TlpError::UnsupportedCombination);
+    }
+
+    #[test]
+    fn atomic_req_rejects_wrong_format() {
+        // FetchAdd type with NoData3DW format is an invalid combo:
+        // get_tlp_type() returns UnsupportedCombination, which propagates
+        let pkt = TlpPacket::new(mk_tlp(0b000, 0b01100, &[0u8; 16]));
+        assert_eq!(new_atomic_req(&pkt).err().unwrap(), TlpError::UnsupportedCombination);
+    }
+
+    #[test]
+    fn atomic_req_rejects_short_payload() {
+        // 3 bytes data — FetchAdd 3DW needs exactly 12 (8 hdr + 4 operand)
+        let pkt = TlpPacket::new(mk_tlp(0b010, 0b01100, &[0u8; 3]));
+        assert_eq!(new_atomic_req(&pkt).err().unwrap(), TlpError::InvalidLength);
+
+        // 8 bytes data — header OK but operand missing (needs 12)
+        let pkt = TlpPacket::new(mk_tlp(0b010, 0b01100, &[0u8; 8]));
+        assert_eq!(new_atomic_req(&pkt).err().unwrap(), TlpError::InvalidLength);
+
+        // 20 bytes data — CAS 4DW needs exactly 28 (12 hdr + 8 + 8)
+        let pkt = TlpPacket::new(mk_tlp(0b011, 0b01110, &[0u8; 20]));
+        assert_eq!(new_atomic_req(&pkt).err().unwrap(), TlpError::InvalidLength);
+    }
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    fn mk_pkt(fmt: u8, typ: u8, data: &[u8]) -> TlpPacket {
+        TlpPacket::new(mk_tlp(fmt, typ, data))
+    }
+
+    // ── atomic tier-B (new API): real binary layout, single-argument call ─────
+
+    #[test]
+    fn atomic_fetchadd_3dw_32_parses_operands() {
+        // FetchAdd 3DW (W32): 8-byte header + 4-byte addend
+        let data = [
+            0x01, 0x00, 0x01, 0x00, // req_id=0x0100, tag=0x01, BE=0x00
+            0x00, 0x00, 0x10, 0x00, // address32=0x0000_1000
+            0x00, 0x00, 0x00, 0x07, // addend=7
+        ];
+        let pkt = mk_pkt(0b010, 0b01100, &data);
+        let a = new_atomic_req(&pkt).unwrap();
+        assert_eq!(a.op(),       AtomicOp::FetchAdd);
+        assert_eq!(a.width(),    AtomicWidth::W32);
+        assert_eq!(a.req_id(),   0x0100);
+        assert_eq!(a.tag(),      0x01);
+        assert_eq!(a.address(),  0x0000_1000);
+        assert_eq!(a.operand0(), 7);
+        assert!(a.operand1().is_none());
+    }
+
+    #[test]
+    fn atomic_swap_4dw_64_parses_operands() {
+        // Swap 4DW (W64): 12-byte header + 8-byte new value
+        let data = [
+            0xBE, 0xEF, 0xA5, 0x00, // req_id=0xBEEF, tag=0xA5, BE=0x00
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, // address64=0x0000_0001_0000_0000
+            0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE, // new_value
+        ];
+        let pkt = mk_pkt(0b011, 0b01101, &data);
+        let a = new_atomic_req(&pkt).unwrap();
+        assert_eq!(a.op(),       AtomicOp::Swap);
+        assert_eq!(a.width(),    AtomicWidth::W64);
+        assert_eq!(a.req_id(),   0xBEEF);
+        assert_eq!(a.tag(),      0xA5);
+        assert_eq!(a.address(),  0x0000_0001_0000_0000);
+        assert_eq!(a.operand0(), 0xDEAD_BEEF_CAFE_BABE);
+        assert!(a.operand1().is_none());
+    }
+
+    #[test]
+    fn atomic_cas_3dw_32_parses_operands() {
+        // CAS 3DW (W32): 8-byte header + 4-byte compare + 4-byte swap
+        let data = [
+            0xAB, 0xCD, 0x07, 0x00, // req_id=0xABCD, tag=0x07, BE=0x00
+            0x00, 0x00, 0x40, 0x00, // address32=0x0000_4000
+            0xCA, 0xFE, 0xBA, 0xBE, // compare
+            0xDE, 0xAD, 0xBE, 0xEF, // swap
+        ];
+        let pkt = mk_pkt(0b010, 0b01110, &data);
+        let a = new_atomic_req(&pkt).unwrap();
+        assert_eq!(a.op(),       AtomicOp::CompareSwap);
+        assert_eq!(a.width(),    AtomicWidth::W32);
+        assert_eq!(a.req_id(),   0xABCD);
+        assert_eq!(a.tag(),      0x07);
+        assert_eq!(a.address(),  0x0000_4000);
+        assert_eq!(a.operand0(), 0xCAFE_BABE);
+        assert_eq!(a.operand1(), Some(0xDEAD_BEEF));
+    }
+
+    #[test]
+    fn atomic_fetchadd_rejects_invalid_operand_length() {
+        // FetchAdd 3DW expects exactly 12 bytes (8 hdr + 4 operand).
+        // A 14-byte payload (8 hdr + 6-byte "bad" operand) must be rejected.
+        let bad = [
+            0x01, 0x00, 0x01, 0x00, // req_id, tag, BE
+            0x00, 0x00, 0x10, 0x00, // address32
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 6 bytes instead of 4
+        ];
+        let pkt = mk_pkt(0b010, 0b01100, &bad);
+        assert_eq!(new_atomic_req(&pkt).unwrap_err(), TlpError::InvalidLength);
     }
 }
 

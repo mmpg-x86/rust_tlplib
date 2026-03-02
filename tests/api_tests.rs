@@ -15,6 +15,7 @@ fn error_type_exists_and_is_public() {
     let _err1: TlpError = TlpError::InvalidFormat;
     let _err2: TlpError = TlpError::InvalidType;
     let _err3: TlpError = TlpError::UnsupportedCombination;
+    let _err4: TlpError = TlpError::InvalidLength;
 }
 
 #[test]
@@ -385,6 +386,90 @@ fn new_msg_req_factory_exists() {
     let _msg_code = result.msg_code();
 }
 
+#[test]
+fn new_atomic_req_factory_exists() {
+    // FetchAdd 3DW: DW0 + 8-byte header + 4-byte W32 operand
+    // DW0: fmt=0b010 (WithData3DW), type=0b01100 (FetchAdd) → byte0 = 0x4C
+    let mut bytes = vec![0x4C, 0x00, 0x00, 0x00];
+    bytes.extend_from_slice(&[0u8; 12]); // 8-byte hdr + 4-byte operand
+    let pkt = TlpPacket::new(bytes);
+    let result = new_atomic_req(&pkt);
+    assert!(result.is_ok());
+    let ar = result.unwrap();
+    let _op    = ar.op();
+    let _width = ar.width();
+    let _rid   = ar.req_id();
+    let _tag   = ar.tag();
+    let _addr  = ar.address();
+    let _op0   = ar.operand0();
+    let _op1   = ar.operand1();
+}
+
+// ============================================================================
+// AtomicOp / AtomicWidth / AtomicRequest API Tests
+// ============================================================================
+
+#[test]
+fn atomic_op_enum_exists_and_is_public() {
+    let _op1: AtomicOp = AtomicOp::FetchAdd;
+    let _op2: AtomicOp = AtomicOp::Swap;
+    let _op3: AtomicOp = AtomicOp::CompareSwap;
+}
+
+#[test]
+fn atomic_op_implements_debug_and_partialeq() {
+    assert_eq!(AtomicOp::FetchAdd, AtomicOp::FetchAdd);
+    assert_ne!(AtomicOp::FetchAdd, AtomicOp::Swap);
+    let s = format!("{:?}", AtomicOp::CompareSwap);
+    assert!(s.contains("CompareSwap"));
+}
+
+#[test]
+fn atomic_width_enum_exists_and_is_public() {
+    let _w1: AtomicWidth = AtomicWidth::W32;
+    let _w2: AtomicWidth = AtomicWidth::W64;
+}
+
+#[test]
+fn atomic_width_implements_debug_and_partialeq() {
+    assert_eq!(AtomicWidth::W32, AtomicWidth::W32);
+    assert_ne!(AtomicWidth::W32, AtomicWidth::W64);
+    let s = format!("{:?}", AtomicWidth::W64);
+    assert!(s.contains("W64"));
+}
+
+#[test]
+fn atomic_req_returns_err_for_non_atomic_type() {
+    // MemRead 3DW NoData: fmt=0b000, type=0b00000 → byte0 = 0x00
+    let mut bytes = vec![0x00, 0x00, 0x00, 0x00];
+    bytes.extend_from_slice(&[0u8; 16]);
+    let pkt = TlpPacket::new(bytes);
+    let result = new_atomic_req(&pkt);
+    assert_eq!(result.err().unwrap(), TlpError::UnsupportedCombination);
+}
+
+#[test]
+fn atomic_req_returns_err_for_nodata_format() {
+    // Swap type with NoData3DW fmt: fmt=0b000, type=0b01101 → byte0 = 0x0D
+    // get_tlp_type() returns UnsupportedCombination for this combo
+    let mut bytes = vec![0x0D, 0x00, 0x00, 0x00];
+    bytes.extend_from_slice(&[0u8; 16]);
+    let pkt = TlpPacket::new(bytes);
+    let result = new_atomic_req(&pkt);
+    assert_eq!(result.err().unwrap(), TlpError::UnsupportedCombination);
+}
+
+#[test]
+fn atomic_req_returns_err_for_short_payload() {
+    // FetchAdd 3DW: DW0 + only 4 bytes of data (needs 12)
+    // fmt=0b010, type=0b01100 → byte0 = 0x4C
+    let mut bytes = vec![0x4C, 0x00, 0x00, 0x00];
+    bytes.extend_from_slice(&[0u8; 4]);
+    let pkt = TlpPacket::new(bytes);
+    let result = new_atomic_req(&pkt);
+    assert_eq!(result.err().unwrap(), TlpError::InvalidLength);
+}
+
 // ============================================================================
 // API Stability Tests - Ensure no accidental changes
 // ============================================================================
@@ -395,9 +480,10 @@ fn api_all_expected_public_types_are_available() {
     use rtlp_lib::{
         TlpError, TlpFmt, TlpFormatEncodingType, TlpType,
         TlpPacket, TlpPacketHeader,
-        MemRequest3DW, MemRequest4DW, ConfigRequest, 
+        MemRequest3DW, MemRequest4DW, ConfigRequest,
         CompletionReqDW23, MessageReqDW24,
-        new_mem_req, new_conf_req, new_cmpl_req, new_msg_req,
+        AtomicOp, AtomicWidth,
+        new_mem_req, new_conf_req, new_cmpl_req, new_msg_req, new_atomic_req,
     };
     
     // Use types to prevent unused warnings
@@ -419,6 +505,9 @@ fn api_all_expected_public_types_are_available() {
     let _ = new_conf_req;
     let _ = new_cmpl_req;
     let _ = new_msg_req;
+    let _ = new_atomic_req;
+    let _: Option<AtomicOp> = None;
+    let _: Option<AtomicWidth> = None;
 }
 
 // ============================================================================

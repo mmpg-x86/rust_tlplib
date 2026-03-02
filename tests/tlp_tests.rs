@@ -1,5 +1,17 @@
 use rtlp_lib::*;
 
+// ── helpers ───────────────────────────────────────────────────────────────
+
+fn mk_pkt(dw0_fmt: u8, dw0_type: u8, data: &[u8]) -> TlpPacket {
+    let mut v = Vec::with_capacity(4 + data.len());
+    v.push((dw0_fmt << 5) | (dw0_type & 0x1f));
+    v.push(0);
+    v.push(0);
+    v.push(0);
+    v.extend_from_slice(data);
+    TlpPacket::new(v)
+}
+
 #[test]
 fn test_tlp_packet() {
     let d = vec![0x04, 0x00, 0x00, 0x01, 0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10];
@@ -94,3 +106,122 @@ fn test_tlp_packet_invalid_type() {
     assert_eq!(result.unwrap_err(), TlpError::InvalidType);
 }
 
+// ============================================================================
+// Tier-B: Atomic operand parsing via new_atomic_req()
+// ============================================================================
+
+#[test]
+fn atomic_fetchadd_3dw_32_parses_operands() {
+    const FMT_3DW_WITH_DATA: u8 = 0b010;
+    const TY_ATOM_FETCH: u8 = 0b01100;
+
+    // DW1+DW2 header bytes as MemRequest3DW expects:
+    // req_id=0x1234, tag=0x56, address32=0x89ABCDEF
+    let hdr = [
+        0x12, 0x34, 0x56, 0x00,
+        0x89, 0xAB, 0xCD, 0xEF,
+    ];
+
+    // 32-bit operand (BE) = 0xDEADBEEF
+    let operand = [0xDE, 0xAD, 0xBE, 0xEF];
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&hdr);
+    data.extend_from_slice(&operand);
+
+    let pkt = mk_pkt(FMT_3DW_WITH_DATA, TY_ATOM_FETCH, &data);
+    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::FetchAddAtomicOpReq);
+
+    let a = new_atomic_req(&pkt).unwrap();
+    assert_eq!(a.op(), AtomicOp::FetchAdd);
+    assert_eq!(a.width(), AtomicWidth::W32);
+    assert_eq!(a.req_id(), 0x1234);
+    assert_eq!(a.tag(), 0x56);
+    assert_eq!(a.address(), 0x89ABCDEF);
+    assert_eq!(a.operand0(), 0xDEADBEEF);
+    assert_eq!(a.operand1(), None);
+}
+
+#[test]
+fn atomic_swap_4dw_64_parses_operands() {
+    const FMT_4DW_WITH_DATA: u8 = 0b011;
+    const TY_ATOM_SWAP: u8 = 0b01101;
+
+    // MemRequest4DW-like header in data:
+    // req_id=0xBEEF, tag=0xA5, address64=0x1122334455667788
+    let hdr = [
+        0xBE, 0xEF, 0xA5, 0x00,
+        0x11, 0x22, 0x33, 0x44,
+        0x55, 0x66, 0x77, 0x88,
+    ];
+
+    // 64-bit operand = 0x0102030405060708 (BE)
+    let operand = [0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08];
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&hdr);
+    data.extend_from_slice(&operand);
+
+    let pkt = mk_pkt(FMT_4DW_WITH_DATA, TY_ATOM_SWAP, &data);
+    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::SwapAtomicOpReq);
+
+    let a = new_atomic_req(&pkt).unwrap();
+    assert_eq!(a.op(), AtomicOp::Swap);
+    assert_eq!(a.width(), AtomicWidth::W64);
+    assert_eq!(a.req_id(), 0xBEEF);
+    assert_eq!(a.tag(), 0xA5);
+    assert_eq!(a.address(), 0x1122334455667788);
+    assert_eq!(a.operand0(), 0x0102030405060708);
+    assert_eq!(a.operand1(), None);
+}
+
+#[test]
+fn atomic_cas_3dw_32_parses_operands() {
+    const FMT_3DW_WITH_DATA: u8 = 0b010;
+    const TY_ATOM_CAS: u8 = 0b01110;
+
+    let hdr = [
+        0xCA, 0xFE, 0x11, 0x00,
+        0x00, 0x00, 0x10, 0x00,  // address32 = 0x00001000
+    ];
+
+    // compare=0x11112222, swap=0x33334444
+    let payload = [0x11,0x11,0x22,0x22, 0x33,0x33,0x44,0x44];
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&hdr);
+    data.extend_from_slice(&payload);
+
+    let pkt = mk_pkt(FMT_3DW_WITH_DATA, TY_ATOM_CAS, &data);
+    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::CompareSwapAtomicOpReq);
+
+    let a = new_atomic_req(&pkt).unwrap();
+    assert_eq!(a.op(), AtomicOp::CompareSwap);
+    assert_eq!(a.width(), AtomicWidth::W32);
+    assert_eq!(a.req_id(), 0xCAFE);
+    assert_eq!(a.tag(), 0x11);
+    assert_eq!(a.address(), 0x00001000);
+    assert_eq!(a.operand0(), 0x11112222);
+    assert_eq!(a.operand1(), Some(0x33334444));
+}
+
+#[test]
+fn atomic_fetchadd_rejects_invalid_operand_length() {
+    const FMT_3DW_WITH_DATA: u8 = 0b010;
+    const TY_ATOM_FETCH: u8 = 0b01100;
+
+    let hdr = [
+        0x12, 0x34, 0x56, 0x00,
+        0x89, 0xAB, 0xCD, 0xEF,
+    ];
+
+    // 6 bytes is invalid (not 4 or 8)
+    let bad_operand = [1,2,3,4,5,6];
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&hdr);
+    data.extend_from_slice(&bad_operand);
+
+    let pkt = mk_pkt(FMT_3DW_WITH_DATA, TY_ATOM_FETCH, &data);
+    assert_eq!(new_atomic_req(&pkt).unwrap_err(), TlpError::InvalidLength);
+}
