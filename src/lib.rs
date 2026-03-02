@@ -16,7 +16,7 @@ pub enum TlpError {
 }
 
 #[repr(u8)]
-#[derive(PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum TlpFmt {
     NoDataHeader3DW     = 0b000,
     NoDataHeader4DW     = 0b001,
@@ -814,6 +814,18 @@ mod tests {
         TlpHeader([(fmt << 5) | (typ & 0x1f), 0x00, 0x00, 0x00])
     }
 
+    /// Build a full TLP byte vector: DW0 header + arbitrary payload bytes.
+    /// DW0 bytes 1-3 are left 0 (length / TC / flags irrelevant for field tests).
+    fn mk_tlp(fmt: u8, typ: u8, rest: &[u8]) -> Vec<u8> {
+        let mut v = Vec::with_capacity(4 + rest.len());
+        v.push((fmt << 5) | (typ & 0x1f));
+        v.push(0x00); // TC, T9, T8, Attr_b2, LN, TH
+        v.push(0x00); // TD, Ep, Attr, AT
+        v.push(0x00); // Length
+        v.extend_from_slice(rest);
+        v
+    }
+
     // ── happy path: every currently-supported (fmt, type) pair ────────────────
 
     #[test]
@@ -928,6 +940,66 @@ mod tests {
         assert_eq!(dw0(FMT_PREFIX, TY_IO).get_tlp_type().unwrap_err(),   TlpError::UnsupportedCombination);
         assert_eq!(dw0(FMT_PREFIX, TY_CPL).get_tlp_type().unwrap_err(),  TlpError::UnsupportedCombination);
         assert_eq!(dw0(FMT_PREFIX, TY_CFG0).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+    }
+
+    // ── atomic tier-A: real bytes through the full packet pipeline ─────────────
+
+    #[test]
+    fn atomic_fetchadd_3dw_type_and_fields() {
+        const FMT_3DW_WITH_DATA: u8 = 0b010;
+        const TY_ATOM_FETCH:     u8 = 0b01100;
+
+        // DW1+DW2 as MemRequest3DW sees them (MSB0):
+        //   requester_id [15:0]  = 0x1234
+        //   tag          [23:16] = 0x56
+        //   last_dw_be   [27:24] = 0x0  (ignored for this test)
+        //   first_dw_be  [31:28] = 0x0  (ignored for this test)
+        //   address32    [63:32] = 0x89ABCDEF
+        let payload = [
+            0x12, 0x34, // req_id
+            0x56, 0x00, // tag, BE nibbles
+            0x89, 0xAB, 0xCD, 0xEF, // address32
+        ];
+
+        let pkt = TlpPacket::new(mk_tlp(FMT_3DW_WITH_DATA, TY_ATOM_FETCH, &payload));
+
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::FetchAddAtomicOpReq);
+        assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
+
+        let fmt = pkt.get_tlp_format().unwrap();
+        let mr = new_mem_req(pkt.get_data(), &fmt);
+        assert_eq!(mr.req_id(),  0x1234);
+        assert_eq!(mr.tag(),     0x56);
+        assert_eq!(mr.address(), 0x89AB_CDEF);
+    }
+
+    #[test]
+    fn atomic_cas_4dw_type_and_fields() {
+        const FMT_4DW_WITH_DATA: u8 = 0b011;
+        const TY_ATOM_CAS:       u8 = 0b01110;
+
+        // DW1-DW3 as MemRequest4DW sees them (MSB0):
+        //   requester_id [15:0]  = 0xBEEF
+        //   tag          [23:16] = 0xA5
+        //   last/first_dw_be     = 0x00
+        //   address64    [95:32] = 0x1122_3344_5566_7788
+        let payload = [
+            0xBE, 0xEF, // req_id
+            0xA5, 0x00, // tag, BE nibbles
+            0x11, 0x22, 0x33, 0x44, // address64 high DW
+            0x55, 0x66, 0x77, 0x88, // address64 low DW
+        ];
+
+        let pkt = TlpPacket::new(mk_tlp(FMT_4DW_WITH_DATA, TY_ATOM_CAS, &payload));
+
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::CompareSwapAtomicOpReq);
+        assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
+
+        let fmt = pkt.get_tlp_format().unwrap();
+        let mr = new_mem_req(pkt.get_data(), &fmt);
+        assert_eq!(mr.req_id(),  0xBEEF);
+        assert_eq!(mr.tag(),     0xA5);
+        assert_eq!(mr.address(), 0x1122_3344_5566_7788);
     }
 }
 
