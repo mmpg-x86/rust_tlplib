@@ -373,8 +373,6 @@ impl <T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
 /// # Examples
 ///
 /// ```
-/// use std::convert::TryFrom;
-///
 /// use rtlp_lib::TlpPacket;
 /// use rtlp_lib::TlpFmt;
 /// use rtlp_lib::MemRequest;
