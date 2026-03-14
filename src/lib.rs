@@ -620,11 +620,13 @@ impl <T: AsRef<[u8]>> MessageRequest for MessageReqDW24<T> {
 /// println!("Requester ID from Message{}", msg_req.req_id());
 /// ```
 pub fn new_msg_req(bytes: Vec<u8>, format: &TlpFmt) -> Result<Box<dyn MessageRequest>, TlpError> {
-	match format {
-		TlpFmt::NoDataHeader3DW | TlpFmt::NoDataHeader4DW |
-		TlpFmt::WithDataHeader3DW | TlpFmt::WithDataHeader4DW => Ok(Box::new(MessageReqDW24(bytes))),
-		TlpFmt::TlpPrefix => Err(TlpError::UnsupportedCombination),
-	}
+    match format {
+        TlpFmt::NoDataHeader3DW
+        | TlpFmt::NoDataHeader4DW
+        | TlpFmt::WithDataHeader3DW
+        | TlpFmt::WithDataHeader4DW => Ok(Box::new(MessageReqDW24(bytes))),
+        TlpFmt::TlpPrefix => Err(TlpError::UnsupportedCombination),
+    }
 }
 
 /// Atomic Request trait: header fields and operand(s) for atomic op TLPs.
