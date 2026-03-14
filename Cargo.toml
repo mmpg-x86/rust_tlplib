@@ -1,13 +1,16 @@
 [package]
 name = "rtlp-lib"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
+rust-version = "1.85"
 authors = ["Maciej Grochowski <maciej.grochowski@pm.me>"]
 license = "BSD-3-Clause"
-description = "This create provide structures to parse PCI TLPs"
-repository = "https://github.com/gotoco/rust_tlplib"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Rust library for parsing PCI Express Transaction Layer Packets (TLPs)"
+repository = "https://github.com/mmpg-x86/rust_tlplib"
+documentation = "https://docs.rs/rtlp-lib"
+readme = "README.md"
+keywords = ["pcie", "tlp", "pci-express", "parser", "hardware"]
+categories = ["hardware-support", "parser-implementations"]
 
 [dependencies]
 bitfield = "0.14.0"

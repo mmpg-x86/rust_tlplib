@@ -9,13 +9,13 @@ fn mk_pkt(dw0_fmt: u8, dw0_type: u8, data: &[u8]) -> TlpPacket {
     v.push(0);
     v.push(0);
     v.extend_from_slice(data);
-    TlpPacket::new(v)
+    TlpPacket::new(v).unwrap()
 }
 
 #[test]
 fn test_tlp_packet() {
     let d = vec![0x04, 0x00, 0x00, 0x01, 0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10];
-    let tlp = TlpPacket::new(d);
+    let tlp = TlpPacket::new(d).unwrap();
 
     assert_eq!(tlp.get_tlp_type().unwrap(), TlpType::ConfType0ReadReq);
     assert_eq!(tlp.get_data(), vec![0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10]);
@@ -92,7 +92,7 @@ fn is_memreq_4dw_address_works() {
 fn is_tlppacket_creates() {
     let memrd32_header = [0x00, 0x00, 0x10, 0x01, 0x00, 0x00, 0x20, 0x0F, 0xF6, 0x20, 0x00, 0x0C];
 
-    let mr = TlpPacketHeader::new(memrd32_header.to_vec());
+    let mr = TlpPacketHeader::new(memrd32_header.to_vec()).unwrap();
     assert_eq!(mr.get_tlp_type().unwrap(), TlpType::MemReadReq);
 }
 
@@ -100,7 +100,7 @@ fn is_tlppacket_creates() {
 fn test_tlp_packet_invalid_type() {
     // Test that TlpPacket::get_tlp_type properly returns error
     let invalid_data = vec![0x0f, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
-    let packet = TlpPacket::new(invalid_data);
+    let packet = TlpPacket::new(invalid_data).unwrap();
     let result = packet.get_tlp_type();
     assert!(result.is_err());
     assert_eq!(result.unwrap_err(), TlpError::InvalidType);
@@ -234,7 +234,7 @@ fn atomic_fetchadd_rejects_invalid_operand_length() {
 fn dmwr32_decode_via_tlppacket() {
     // DMWr32: fmt=010, type=11011 → byte0 = 0x5B
     let data = vec![0x5B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-    let pkt = TlpPacket::new(data);
+    let pkt = TlpPacket::new(data).unwrap();
     assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
     assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
 }
@@ -243,7 +243,7 @@ fn dmwr32_decode_via_tlppacket() {
 fn dmwr64_decode_via_tlppacket() {
     // DMWr64: fmt=011, type=11011 → byte0 = 0x7B
     let data = vec![0x7B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-    let pkt = TlpPacket::new(data);
+    let pkt = TlpPacket::new(data).unwrap();
     assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
     assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
 }
@@ -251,11 +251,11 @@ fn dmwr64_decode_via_tlppacket() {
 #[test]
 fn dmwr_rejects_nodata_formats() {
     // NoData 3DW: fmt=000, type=11011 → byte0 = 0x1B
-    let pkt1 = TlpPacket::new(vec![0x1B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    let pkt1 = TlpPacket::new(vec![0x1B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]).unwrap();
     assert_eq!(pkt1.get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
 
     // NoData 4DW: fmt=001, type=11011 → byte0 = 0x3B
-    let pkt2 = TlpPacket::new(vec![0x3B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    let pkt2 = TlpPacket::new(vec![0x3B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]).unwrap();
     assert_eq!(pkt2.get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
 }
 
