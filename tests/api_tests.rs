@@ -353,7 +353,7 @@ fn message_request_trait_methods_return_expected_types() {
 fn new_mem_req_factory_exists() {
     let bytes = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
     let format = TlpFmt::NoDataHeader3DW;
-    let result = new_mem_req(bytes, &format);
+    let result = new_mem_req(bytes, &format).unwrap();
     // Factory returns Box<dyn MemRequest>, verify it has the expected methods
     let _req_id = result.req_id();
     let _addr = result.address();

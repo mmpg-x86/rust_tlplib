@@ -385,24 +385,24 @@ impl <T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
 ///
 /// if let Ok(tlpfmt) = tlp.get_tlp_format() {
 ///     // MemRequest contain only fields specific to PCI Memory Requests
-///     let mem_req: Box<dyn MemRequest> = new_mem_req(tlp.get_data(), &tlpfmt);
+///     if let Ok(mem_req) = new_mem_req(tlp.get_data(), &tlpfmt) {
+///         // Address is 64 bits regardles of TLP format
+///         //println!("Memory Request Address: {:x}", mem_req.address());
 ///
-///     // Address is 64 bits regardles of TLP format
-///     //println!("Memory Request Address: {:x}", mem_req.address());
-///
-///     // Format of TLP (3DW vs 4DW) is stored in the TLP header
-///     println!("This TLP size is: {}", tlpfmt);
-///     // Type LegacyIO vs MemRead vs MemWrite is stored in first DW of TLP
-///     println!("This TLP type is: {:?}", tlp.get_tlp_type());
+///         // Format of TLP (3DW vs 4DW) is stored in the TLP header
+///         println!("This TLP size is: {}", tlpfmt);
+///         // Type LegacyIO vs MemRead vs MemWrite is stored in first DW of TLP
+///         println!("This TLP type is: {:?}", tlp.get_tlp_type());
+///     }
 /// }
 /// ```
-pub fn new_mem_req(bytes: Vec<u8>, format: &TlpFmt) -> Box<dyn MemRequest> {
+pub fn new_mem_req(bytes: Vec<u8>, format: &TlpFmt) -> Result<Box<dyn MemRequest>, TlpError> {
     match format {
-        TlpFmt::NoDataHeader3DW => Box::new(MemRequest3DW(bytes)),
-        TlpFmt::NoDataHeader4DW => Box::new(MemRequest4DW(bytes)),
-        TlpFmt::WithDataHeader3DW => Box::new(MemRequest3DW(bytes)),
-        TlpFmt::WithDataHeader4DW => Box::new(MemRequest4DW(bytes)),
-        TlpFmt::TlpPrefix => Box::new(MemRequest3DW(bytes)),
+        TlpFmt::NoDataHeader3DW => Ok(Box::new(MemRequest3DW(bytes))),
+        TlpFmt::NoDataHeader4DW => Ok(Box::new(MemRequest4DW(bytes))),
+        TlpFmt::WithDataHeader3DW => Ok(Box::new(MemRequest3DW(bytes))),
+        TlpFmt::WithDataHeader4DW => Ok(Box::new(MemRequest4DW(bytes))),
+        TlpFmt::TlpPrefix => Err(TlpError::UnsupportedCombination),
     }
 }
 
@@ -799,7 +799,7 @@ impl TlpPacketHeader {
 ///      TlpType::IOWriteReq |
 ///      TlpType::FetchAddAtomicOpReq |
 ///      TlpType::SwapAtomicOpReq |
-///      TlpType::CompareSwapAtomicOpReq => requester_id = new_mem_req(packet.get_data(), &tlp_format).req_id(),
+///      TlpType::CompareSwapAtomicOpReq => requester_id = new_mem_req(packet.get_data(), &tlp_format).unwrap().req_id(),
 ///      TlpType::ConfType0ReadReq |
 ///      TlpType::ConfType0WriteReq |
 ///      TlpType::ConfType1ReadReq |
@@ -969,8 +969,17 @@ mod tests {
         assert_eq!(result.unwrap_err(), TlpError::UnsupportedCombination);
     }
 
-    // ── short packet rejection ─────────────────────────────────────────────
+    // ── new_mem_req rejects TlpPrefix ──────────────────────────────────────
 
+    #[test]
+    fn mem_req_rejects_tlp_prefix() {
+        let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let result = new_mem_req(bytes, &TlpFmt::TlpPrefix);
+        assert!(matches!(result, Err(TlpError::UnsupportedCombination)));
+    }
+  
+    // ── short packet rejection ─────────────────────────────────────────────
+  
     #[test]
     fn packet_new_rejects_empty_input() {
         assert!(matches!(TlpPacket::new(vec![]), Err(TlpError::InvalidLength)));
@@ -1183,7 +1192,7 @@ mod tests {
         assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
         assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
 
-        let mr = new_mem_req(pkt.get_data(), &pkt.get_tlp_format().unwrap());
+        let mr = new_mem_req(pkt.get_data(), &pkt.get_tlp_format().unwrap()).unwrap();
         assert_eq!(mr.req_id(), 0xABCD);
         assert_eq!(mr.tag(),    0x42);
         assert_eq!(mr.address(), 0xDEAD_0000);
@@ -1201,7 +1210,7 @@ mod tests {
         assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
         assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
 
-        let mr = new_mem_req(pkt.get_data(), &pkt.get_tlp_format().unwrap());
+        let mr = new_mem_req(pkt.get_data(), &pkt.get_tlp_format().unwrap()).unwrap();
         assert_eq!(mr.req_id(), 0xBEEF);
         assert_eq!(mr.tag(),    0xA5);
         assert_eq!(mr.address(), 0x1122_3344_5566_7788);
@@ -1266,7 +1275,7 @@ mod tests {
         assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
 
         let fmt = pkt.get_tlp_format().unwrap();
-        let mr = new_mem_req(pkt.get_data(), &fmt);
+        let mr = new_mem_req(pkt.get_data(), &fmt).unwrap();
         assert_eq!(mr.req_id(),  0x1234);
         assert_eq!(mr.tag(),     0x56);
         assert_eq!(mr.address(), 0x89AB_CDEF);
@@ -1295,7 +1304,7 @@ mod tests {
         assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
 
         let fmt = pkt.get_tlp_format().unwrap();
-        let mr = new_mem_req(pkt.get_data(), &fmt);
+        let mr = new_mem_req(pkt.get_data(), &fmt).unwrap();
         assert_eq!(mr.req_id(),  0xBEEF);
         assert_eq!(mr.tag(),     0xA5);
         assert_eq!(mr.address(), 0x1122_3344_5566_7788);
