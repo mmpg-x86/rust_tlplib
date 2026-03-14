@@ -570,17 +570,17 @@ pub trait MessageRequest {
 
 bitfield! {
     pub struct MessageReqDW24(MSB0 [u8]);
-    u16;
+    u32;
     pub get_requester_id,   _: 15, 0;
     pub get_tag,            _: 23, 16;
     pub get_msg_code,       _: 31, 24;
     pub get_dw3,            _: 63, 32;
-    pub get_dw4,            _: 96, 64;
+    pub get_dw4,            _: 95, 64;
 }
 
 impl <T: AsRef<[u8]>> MessageRequest for MessageReqDW24<T> {
     fn req_id(&self) -> u16 {
-        self.get_requester_id()
+        self.get_requester_id() as u16
     }
     fn tag(&self) -> u8 {
         self.get_tag() as u8
@@ -589,10 +589,10 @@ impl <T: AsRef<[u8]>> MessageRequest for MessageReqDW24<T> {
         self.get_msg_code() as u8
     }
     fn dw3(&self) -> u32 {
-        self.get_dw3() as u32
+        self.get_dw3()
     }
     fn dw4(&self) -> u32 {
-        self.get_dw4() as u32
+        self.get_dw4()
     }
     // TODO: implement routedby method based on type
 }
@@ -1500,6 +1500,61 @@ mod tests {
         ];
         let pkt = mk_pkt(0b010, 0b01100, &bad);
         assert_eq!(new_atomic_req(&pkt).unwrap_err(), TlpError::InvalidLength);
+    }
+
+    // ── MessageReqDW24: DW3/DW4 full 32-bit decode ───────────────────────────
+
+    #[test]
+    fn message_dw3_preserves_upper_16_bits() {
+        // DW3 = 0xDEAD_BEEF — upper 16 bits (0xDEAD) must survive
+        let bytes = vec![
+            0x00, 0x00, 0x00, 0x00, // req_id, tag, msg_code
+            0xDE, 0xAD, 0xBE, 0xEF, // DW3
+            0x00, 0x00, 0x00, 0x00, // DW4
+        ];
+        let msg = new_msg_req(bytes, &TlpFmt::NoDataHeader3DW);
+        assert_eq!(msg.dw3(), 0xDEAD_BEEF);
+    }
+
+    #[test]
+    fn message_dw4_preserves_upper_16_bits() {
+        // DW4 = 0xCAFE_BABE — upper 16 bits (0xCAFE) must survive
+        let bytes = vec![
+            0x00, 0x00, 0x00, 0x00, // req_id, tag, msg_code
+            0x00, 0x00, 0x00, 0x00, // DW3
+            0xCA, 0xFE, 0xBA, 0xBE, // DW4
+        ];
+        let msg = new_msg_req(bytes, &TlpFmt::NoDataHeader3DW);
+        assert_eq!(msg.dw4(), 0xCAFE_BABE);
+    }
+
+    #[test]
+    fn message_dw3_dw4_all_bits_set() {
+        // Both DW3 and DW4 = 0xFFFF_FFFF
+        let bytes = vec![
+            0x00, 0x00, 0x00, 0x00,
+            0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF,
+        ];
+        let msg = new_msg_req(bytes, &TlpFmt::NoDataHeader3DW);
+        assert_eq!(msg.dw3(), 0xFFFF_FFFF);
+        assert_eq!(msg.dw4(), 0xFFFF_FFFF);
+    }
+
+    #[test]
+    fn message_request_full_fields() {
+        // req_id=0xABCD, tag=0x42, msg_code=0x7F, DW3=0x1234_5678, DW4=0x9ABC_DEF0
+        let bytes = vec![
+            0xAB, 0xCD, 0x42, 0x7F,
+            0x12, 0x34, 0x56, 0x78,
+            0x9A, 0xBC, 0xDE, 0xF0,
+        ];
+        let msg = new_msg_req(bytes, &TlpFmt::NoDataHeader3DW);
+        assert_eq!(msg.req_id(),   0xABCD);
+        assert_eq!(msg.tag(),      0x42);
+        assert_eq!(msg.msg_code(), 0x7F);
+        assert_eq!(msg.dw3(),      0x1234_5678);
+        assert_eq!(msg.dw4(),      0x9ABC_DEF0);
     }
 }
 
