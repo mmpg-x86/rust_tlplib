@@ -373,28 +373,32 @@ impl <T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
 /// # Examples
 ///
 /// ```
-/// use std::convert::TryFrom;
-///
 /// use rtlp_lib::TlpPacket;
 /// use rtlp_lib::TlpFmt;
+/// use rtlp_lib::TlpError;
 /// use rtlp_lib::MemRequest;
 /// use rtlp_lib::new_mem_req;
 ///
-/// let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-/// let tlp = TlpPacket::new(bytes).unwrap();
+/// fn decode(bytes: Vec<u8>) -> Result<(), TlpError> {
+///     let tlp = TlpPacket::new(bytes).unwrap();
 ///
-/// if let Ok(tlpfmt) = tlp.get_tlp_format() {
-///     // MemRequest contain only fields specific to PCI Memory Requests
-///     if let Ok(mem_req) = new_mem_req(tlp.get_data(), &tlpfmt) {
-///         // Address is 64 bits regardles of TLP format
-///         //println!("Memory Request Address: {:x}", mem_req.address());
+///     if let Ok(tlpfmt) = tlp.get_tlp_format() {
+///         // MemRequest contains only fields specific to PCI Memory Requests
+///         let mem_req: Box<dyn MemRequest> = new_mem_req(tlp.get_data(), &tlpfmt)?;
+///
+///         // Address is 64 bits regardless of TLP format
+///         // println!("Memory Request Address: {:x}", mem_req.address());
 ///
 ///         // Format of TLP (3DW vs 4DW) is stored in the TLP header
 ///         println!("This TLP size is: {}", tlpfmt);
 ///         // Type LegacyIO vs MemRead vs MemWrite is stored in first DW of TLP
 ///         println!("This TLP type is: {:?}", tlp.get_tlp_type());
 ///     }
+///     Ok(())
 /// }
+///
+/// # let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+/// # let _ = decode(bytes);
 /// ```
 pub fn new_mem_req(bytes: Vec<u8>, format: &TlpFmt) -> Result<Box<dyn MemRequest>, TlpError> {
     match format {
