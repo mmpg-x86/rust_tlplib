@@ -381,7 +381,7 @@ impl <T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
 /// use rtlp_lib::new_mem_req;
 ///
 /// let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-/// let tlp = TlpPacket::new(bytes);
+/// let tlp = TlpPacket::new(bytes).unwrap();
 ///
 /// if let Ok(tlpfmt) = tlp.get_tlp_format() {
 ///     // MemRequest contain only fields specific to PCI Memory Requests
@@ -432,7 +432,7 @@ pub trait ConfigurationRequest {
 /// use rtlp_lib::new_conf_req;
 ///
 /// let bytes = vec![0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-/// let tlp = TlpPacket::new(bytes);
+/// let tlp = TlpPacket::new(bytes).unwrap();
 ///
 /// if let Ok(tlpfmt) = tlp.get_tlp_format() {
 ///     let config_req: Box<dyn ConfigurationRequest> = new_conf_req(tlp.get_data(), &tlpfmt);
@@ -681,7 +681,7 @@ fn read_operand_be(b: &[u8], off: usize, width: AtomicWidth) -> u64 {
 ///     0x00, 0x00, 0x10, 0x00, // DW2: address32=0x0000_1000
 ///     0x00, 0x00, 0x00, 0x04, // operand: addend=4
 /// ];
-/// let pkt = TlpPacket::new(bytes);
+/// let pkt = TlpPacket::new(bytes).unwrap();
 /// let ar = new_atomic_req(&pkt).unwrap();
 /// assert_eq!(ar.req_id(),   0xABCD);
 /// assert_eq!(ar.operand0(), 4);
@@ -736,11 +736,14 @@ pub struct TlpPacketHeader {
 }
 
 impl TlpPacketHeader {
-    pub fn new(bytes: Vec<u8>) -> TlpPacketHeader {
+    pub fn new(bytes: Vec<u8>) -> Result<TlpPacketHeader, TlpError> {
+        if bytes.len() < 4 {
+            return Err(TlpError::InvalidLength);
+        }
         let mut dw0 = vec![0; 4];
         dw0[..4].clone_from_slice(&bytes[0..4]);
 
-        TlpPacketHeader { header: TlpHeader(dw0) }
+        Ok(TlpPacketHeader { header: TlpHeader(dw0) })
     }
 
     pub fn get_tlp_type(&self) -> Result<TlpType, TlpError> {
@@ -780,7 +783,7 @@ impl TlpPacketHeader {
 /// // Bytes for full TLP Packet
 /// //               <------- DW1 -------->  <------- DW2 -------->  <------- DW3 -------->  <------- DW4 -------->
 /// let bytes = vec![0x00, 0x00, 0x20, 0x01, 0x04, 0x00, 0x00, 0x01, 0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10];
-/// let packet = TlpPacket::new(bytes);
+/// let packet = TlpPacket::new(bytes).unwrap();
 ///
 /// let header = packet.get_header();
 /// // TLP Type tells us what is this packet
@@ -817,15 +820,18 @@ pub struct TlpPacket {
 }
 
 impl TlpPacket {
-    pub fn new(bytes: Vec<u8>) -> TlpPacket {
+    pub fn new(bytes: Vec<u8>) -> Result<TlpPacket, TlpError> {
+        if bytes.len() < 4 {
+            return Err(TlpError::InvalidLength);
+        }
         let mut ownbytes = bytes.to_vec();
         let mut header = vec![0; 4];
         header.clone_from_slice(&ownbytes[0..4]);
         let data = ownbytes.drain(4..).collect();
-        TlpPacket {
-            header: TlpPacketHeader::new(header),
+        Ok(TlpPacket {
+            header: TlpPacketHeader::new(header)?,
             data,
-        }
+        })
     }
 
     pub fn get_header(&self) -> &TlpPacketHeader {
@@ -961,6 +967,29 @@ mod tests {
         let result = invalid_combo.get_tlp_type();
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), TlpError::UnsupportedCombination);
+    }
+
+    // ── short packet rejection ─────────────────────────────────────────────
+
+    #[test]
+    fn packet_new_rejects_empty_input() {
+        assert!(matches!(TlpPacket::new(vec![]), Err(TlpError::InvalidLength)));
+    }
+
+    #[test]
+    fn packet_new_rejects_3_bytes() {
+        assert!(matches!(TlpPacket::new(vec![0x00, 0x00, 0x00]), Err(TlpError::InvalidLength)));
+    }
+
+    #[test]
+    fn packet_new_accepts_4_bytes() {
+        // Exactly 4 bytes = header only, no data — should succeed
+        assert!(TlpPacket::new(vec![0x00, 0x00, 0x00, 0x00]).is_ok());
+    }
+
+    #[test]
+    fn packet_header_new_rejects_short_input() {
+        assert!(matches!(TlpPacketHeader::new(vec![0x00, 0x00]), Err(TlpError::InvalidLength)));
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
@@ -1150,7 +1179,7 @@ mod tests {
             0xAB, 0xCD, 0x42, 0x0F, // req_id=0xABCD, tag=0x42, BE=0x0F
             0xDE, 0xAD, 0x00, 0x00, // address32=0xDEAD0000
         ];
-        let pkt = TlpPacket::new(mk_tlp(0b010, 0b11011, &payload));
+        let pkt = TlpPacket::new(mk_tlp(0b010, 0b11011, &payload)).unwrap();
         assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
         assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
 
@@ -1168,7 +1197,7 @@ mod tests {
             0x11, 0x22, 0x33, 0x44, // address64 hi
             0x55, 0x66, 0x77, 0x88, // address64 lo
         ];
-        let pkt = TlpPacket::new(mk_tlp(0b011, 0b11011, &payload));
+        let pkt = TlpPacket::new(mk_tlp(0b011, 0b11011, &payload)).unwrap();
         assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
         assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
 
@@ -1231,7 +1260,7 @@ mod tests {
             0x89, 0xAB, 0xCD, 0xEF, // address32
         ];
 
-        let pkt = TlpPacket::new(mk_tlp(FMT_3DW_WITH_DATA, TY_ATOM_FETCH, &payload));
+        let pkt = TlpPacket::new(mk_tlp(FMT_3DW_WITH_DATA, TY_ATOM_FETCH, &payload)).unwrap();
 
         assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::FetchAddAtomicOpReq);
         assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
@@ -1260,7 +1289,7 @@ mod tests {
             0x55, 0x66, 0x77, 0x88, // address64 low DW
         ];
 
-        let pkt = TlpPacket::new(mk_tlp(FMT_4DW_WITH_DATA, TY_ATOM_CAS, &payload));
+        let pkt = TlpPacket::new(mk_tlp(FMT_4DW_WITH_DATA, TY_ATOM_CAS, &payload)).unwrap();
 
         assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::CompareSwapAtomicOpReq);
         assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
@@ -1285,7 +1314,7 @@ mod tests {
             0xC0, 0x01, 0x00, 0x04, // address32
             0x00, 0x00, 0x00, 0x0A, // addend (W32)
         ];
-        let pkt = TlpPacket::new(mk_tlp(0b010, 0b01100, &payload));
+        let pkt = TlpPacket::new(mk_tlp(0b010, 0b01100, &payload)).unwrap();
         let ar  = new_atomic_req(&pkt).unwrap();
 
         assert_eq!(ar.op(),       AtomicOp::FetchAdd);
@@ -1308,7 +1337,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, // address64
             0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // addend (W64)
         ];
-        let pkt = TlpPacket::new(mk_tlp(0b011, 0b01100, &payload));
+        let pkt = TlpPacket::new(mk_tlp(0b011, 0b01100, &payload)).unwrap();
         let ar  = new_atomic_req(&pkt).unwrap();
 
         assert_eq!(ar.op(),       AtomicOp::FetchAdd);
@@ -1331,7 +1360,7 @@ mod tests {
             0xF0, 0x00, 0x00, 0x08, // address32
             0xAB, 0xCD, 0xEF, 0x01, // new_value (W32)
         ];
-        let pkt = TlpPacket::new(mk_tlp(0b010, 0b01101, &payload));
+        let pkt = TlpPacket::new(mk_tlp(0b010, 0b01101, &payload)).unwrap();
         let ar  = new_atomic_req(&pkt).unwrap();
 
         assert_eq!(ar.op(),       AtomicOp::Swap);
@@ -1356,7 +1385,7 @@ mod tests {
             0xCA, 0xFE, 0xBA, 0xBE, // compare (W32)
             0xDE, 0xAD, 0xBE, 0xEF, // swap    (W32)
         ];
-        let pkt = TlpPacket::new(mk_tlp(0b010, 0b01110, &payload));
+        let pkt = TlpPacket::new(mk_tlp(0b010, 0b01110, &payload)).unwrap();
         let ar  = new_atomic_req(&pkt).unwrap();
 
         assert_eq!(ar.op(),       AtomicOp::CompareSwap);
@@ -1381,7 +1410,7 @@ mod tests {
             0x01, 0x01, 0x01, 0x01, 0x02, 0x02, 0x02, 0x02, // compare (W64)
             0x03, 0x03, 0x03, 0x03, 0x04, 0x04, 0x04, 0x04, // swap    (W64)
         ];
-        let pkt = TlpPacket::new(mk_tlp(0b011, 0b01110, &payload));
+        let pkt = TlpPacket::new(mk_tlp(0b011, 0b01110, &payload)).unwrap();
         let ar  = new_atomic_req(&pkt).unwrap();
 
         assert_eq!(ar.op(),       AtomicOp::CompareSwap);
@@ -1396,7 +1425,7 @@ mod tests {
     #[test]
     fn atomic_req_rejects_wrong_tlp_type() {
         // MemRead type is not an atomic — should get UnsupportedCombination
-        let pkt = TlpPacket::new(mk_tlp(0b000, 0b00000, &[0u8; 16]));
+        let pkt = TlpPacket::new(mk_tlp(0b000, 0b00000, &[0u8; 16])).unwrap();
         assert_eq!(new_atomic_req(&pkt).err().unwrap(), TlpError::UnsupportedCombination);
     }
 
@@ -1404,29 +1433,29 @@ mod tests {
     fn atomic_req_rejects_wrong_format() {
         // FetchAdd type with NoData3DW format is an invalid combo:
         // get_tlp_type() returns UnsupportedCombination, which propagates
-        let pkt = TlpPacket::new(mk_tlp(0b000, 0b01100, &[0u8; 16]));
+        let pkt = TlpPacket::new(mk_tlp(0b000, 0b01100, &[0u8; 16])).unwrap();
         assert_eq!(new_atomic_req(&pkt).err().unwrap(), TlpError::UnsupportedCombination);
     }
 
     #[test]
     fn atomic_req_rejects_short_payload() {
         // 3 bytes data — FetchAdd 3DW needs exactly 12 (8 hdr + 4 operand)
-        let pkt = TlpPacket::new(mk_tlp(0b010, 0b01100, &[0u8; 3]));
+        let pkt = TlpPacket::new(mk_tlp(0b010, 0b01100, &[0u8; 3])).unwrap();
         assert_eq!(new_atomic_req(&pkt).err().unwrap(), TlpError::InvalidLength);
 
         // 8 bytes data — header OK but operand missing (needs 12)
-        let pkt = TlpPacket::new(mk_tlp(0b010, 0b01100, &[0u8; 8]));
+        let pkt = TlpPacket::new(mk_tlp(0b010, 0b01100, &[0u8; 8])).unwrap();
         assert_eq!(new_atomic_req(&pkt).err().unwrap(), TlpError::InvalidLength);
 
         // 20 bytes data — CAS 4DW needs exactly 28 (12 hdr + 8 + 8)
-        let pkt = TlpPacket::new(mk_tlp(0b011, 0b01110, &[0u8; 20]));
+        let pkt = TlpPacket::new(mk_tlp(0b011, 0b01110, &[0u8; 20])).unwrap();
         assert_eq!(new_atomic_req(&pkt).err().unwrap(), TlpError::InvalidLength);
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
     fn mk_pkt(fmt: u8, typ: u8, data: &[u8]) -> TlpPacket {
-        TlpPacket::new(mk_tlp(fmt, typ, data))
+        TlpPacket::new(mk_tlp(fmt, typ, data)).unwrap()
     }
 
     // ── atomic tier-B (new API): real binary layout, single-argument call ─────

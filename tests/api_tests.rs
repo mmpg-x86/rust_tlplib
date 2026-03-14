@@ -125,13 +125,13 @@ fn tlp_type_implements_debug() {
 #[test]
 fn tlp_packet_new_constructor_exists() {
     let data = vec![0x00; 12];
-    let _packet = TlpPacket::new(data);
+    let _packet = TlpPacket::new(data).unwrap();
 }
 
 #[test]
 fn tlp_packet_get_tlp_type_returns_result() {
     let data = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
-    let packet = TlpPacket::new(data);
+    let packet = TlpPacket::new(data).unwrap();
     let result: Result<TlpType, TlpError> = packet.get_tlp_type();
     assert!(result.is_ok());
 }
@@ -139,28 +139,28 @@ fn tlp_packet_get_tlp_type_returns_result() {
 #[test]
 fn tlp_packet_get_tlp_type_valid_mem_read() {
     let data = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
-    let packet = TlpPacket::new(data);
+    let packet = TlpPacket::new(data).unwrap();
     assert_eq!(packet.get_tlp_type().unwrap(), TlpType::MemReadReq);
 }
 
 #[test]
 fn tlp_packet_get_tlp_type_valid_mem_write() {
     let data = vec![0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
-    let packet = TlpPacket::new(data);
+    let packet = TlpPacket::new(data).unwrap();
     assert_eq!(packet.get_tlp_type().unwrap(), TlpType::MemWriteReq);
 }
 
 #[test]
 fn tlp_packet_get_tlp_type_valid_config_type0_read() {
     let data = vec![0x04, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
-    let packet = TlpPacket::new(data);
+    let packet = TlpPacket::new(data).unwrap();
     assert_eq!(packet.get_tlp_type().unwrap(), TlpType::ConfType0ReadReq);
 }
 
 #[test]
 fn tlp_packet_get_tlp_type_error_invalid_format() {
     let data = vec![0xa0, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
-    let packet = TlpPacket::new(data);
+    let packet = TlpPacket::new(data).unwrap();
     let result = packet.get_tlp_type();
     assert!(result.is_err());
     assert_eq!(result.unwrap_err(), TlpError::InvalidFormat);
@@ -169,7 +169,7 @@ fn tlp_packet_get_tlp_type_error_invalid_format() {
 #[test]
 fn tlp_packet_get_tlp_type_error_invalid_type() {
     let data = vec![0x0f, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
-    let packet = TlpPacket::new(data);
+    let packet = TlpPacket::new(data).unwrap();
     let result = packet.get_tlp_type();
     assert!(result.is_err());
     assert_eq!(result.unwrap_err(), TlpError::InvalidType);
@@ -178,7 +178,7 @@ fn tlp_packet_get_tlp_type_error_invalid_type() {
 #[test]
 fn tlp_packet_get_tlp_format_exists() {
     let data = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
-    let packet = TlpPacket::new(data);
+    let packet = TlpPacket::new(data).unwrap();
     let format: Result<TlpFmt, _> = packet.get_tlp_format();
     assert!(format.is_ok());
 }
@@ -186,7 +186,7 @@ fn tlp_packet_get_tlp_format_exists() {
 #[test]
 fn tlp_packet_get_data_exists() {
     let data = vec![0x00, 0x00, 0x00, 0x01, 0xAA, 0xBB, 0xCC, 0xDD];
-    let packet = TlpPacket::new(data.clone());
+    let packet = TlpPacket::new(data.clone()).unwrap();
     let returned_data = packet.get_data();
     assert_eq!(returned_data, vec![0xAA, 0xBB, 0xCC, 0xDD]);
 }
@@ -198,13 +198,13 @@ fn tlp_packet_get_data_exists() {
 #[test]
 fn tlp_packet_header_new_constructor_exists() {
     let data = vec![0x00; 12];
-    let _header = TlpPacketHeader::new(data);
+    let _header = TlpPacketHeader::new(data).unwrap();
 }
 
 #[test]
 fn tlp_packet_header_get_tlp_type_returns_result() {
     let data = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
-    let header = TlpPacketHeader::new(data);
+    let header = TlpPacketHeader::new(data).unwrap();
     let result: Result<TlpType, TlpError> = header.get_tlp_type();
     assert!(result.is_ok());
 }
@@ -395,7 +395,7 @@ fn new_atomic_req_factory_exists() {
     // DW0: fmt=0b010 (WithData3DW), type=0b01100 (FetchAdd) → byte0 = 0x4C
     let mut bytes = vec![0x4C, 0x00, 0x00, 0x00];
     bytes.extend_from_slice(&[0u8; 12]); // 8-byte hdr + 4-byte operand
-    let pkt = TlpPacket::new(bytes);
+    let pkt = TlpPacket::new(bytes).unwrap();
     let result = new_atomic_req(&pkt);
     assert!(result.is_ok());
     let ar = result.unwrap();
@@ -446,7 +446,7 @@ fn atomic_req_returns_err_for_non_atomic_type() {
     // MemRead 3DW NoData: fmt=0b000, type=0b00000 → byte0 = 0x00
     let mut bytes = vec![0x00, 0x00, 0x00, 0x00];
     bytes.extend_from_slice(&[0u8; 16]);
-    let pkt = TlpPacket::new(bytes);
+    let pkt = TlpPacket::new(bytes).unwrap();
     let result = new_atomic_req(&pkt);
     assert_eq!(result.err().unwrap(), TlpError::UnsupportedCombination);
 }
@@ -457,7 +457,7 @@ fn atomic_req_returns_err_for_nodata_format() {
     // get_tlp_type() returns UnsupportedCombination for this combo
     let mut bytes = vec![0x0D, 0x00, 0x00, 0x00];
     bytes.extend_from_slice(&[0u8; 16]);
-    let pkt = TlpPacket::new(bytes);
+    let pkt = TlpPacket::new(bytes).unwrap();
     let result = new_atomic_req(&pkt);
     assert_eq!(result.err().unwrap(), TlpError::UnsupportedCombination);
 }
@@ -468,7 +468,7 @@ fn atomic_req_returns_err_for_short_payload() {
     // fmt=0b010, type=0b01100 → byte0 = 0x4C
     let mut bytes = vec![0x4C, 0x00, 0x00, 0x00];
     bytes.extend_from_slice(&[0u8; 4]);
-    let pkt = TlpPacket::new(bytes);
+    let pkt = TlpPacket::new(bytes).unwrap();
     let result = new_atomic_req(&pkt);
     assert_eq!(result.err().unwrap(), TlpError::InvalidLength);
 }
@@ -521,14 +521,14 @@ fn api_all_expected_public_types_are_available() {
 fn tlp_packet_handles_minimum_size() {
     // 4-byte header minimum
     let data = vec![0x00, 0x00, 0x00, 0x00];
-    let packet = TlpPacket::new(data);
+    let packet = TlpPacket::new(data).unwrap();
     assert!(packet.get_tlp_type().is_ok());
 }
 
 #[test]
 fn tlp_packet_handles_empty_data_section() {
     let data = vec![0x00, 0x00, 0x00, 0x01];
-    let packet = TlpPacket::new(data);
+    let packet = TlpPacket::new(data).unwrap();
     assert_eq!(packet.get_data(), Vec::<u8>::new());
 }
 
@@ -537,6 +537,6 @@ fn tlp_packet_preserves_data_payload() {
     let payload = vec![0xDE, 0xAD, 0xBE, 0xEF];
     let mut data = vec![0x00, 0x00, 0x00, 0x01];
     data.extend_from_slice(&payload);
-    let packet = TlpPacket::new(data);
+    let packet = TlpPacket::new(data).unwrap();
     assert_eq!(packet.get_data(), payload);
 }
