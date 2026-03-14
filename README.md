@@ -55,7 +55,7 @@ match tlp_type {
     TlpType::MemReadLockReq |
     TlpType::DeferrableMemWriteReq |
     TlpType::IOReadReq | TlpType::IOWriteReq => {
-        let mr = new_mem_req(packet.get_data(), &tlp_format);
+        let mr = new_mem_req(packet.get_data(), &tlp_format).unwrap();
         println!("req_id=0x{:04X}  tag=0x{:02X}  addr=0x{:X}",
                  mr.req_id(), mr.tag(), mr.address());
     }
