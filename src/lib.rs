@@ -385,15 +385,15 @@ impl <T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
 ///
 /// if let Ok(tlpfmt) = tlp.get_tlp_format() {
 ///     // MemRequest contain only fields specific to PCI Memory Requests
-///     let mem_req: Box<dyn MemRequest> = new_mem_req(tlp.get_data(), &tlpfmt).unwrap();
+///     if let Ok(mem_req) = new_mem_req(tlp.get_data(), &tlpfmt) {
+///         // Address is 64 bits regardles of TLP format
+///         //println!("Memory Request Address: {:x}", mem_req.address());
 ///
-///     // Address is 64 bits regardles of TLP format
-///     //println!("Memory Request Address: {:x}", mem_req.address());
-///
-///     // Format of TLP (3DW vs 4DW) is stored in the TLP header
-///     println!("This TLP size is: {}", tlpfmt);
-///     // Type LegacyIO vs MemRead vs MemWrite is stored in first DW of TLP
-///     println!("This TLP type is: {:?}", tlp.get_tlp_type());
+///         // Format of TLP (3DW vs 4DW) is stored in the TLP header
+///         println!("This TLP size is: {}", tlpfmt);
+///         // Type LegacyIO vs MemRead vs MemWrite is stored in first DW of TLP
+///         println!("This TLP type is: {:?}", tlp.get_tlp_type());
+///     }
 /// }
 /// ```
 pub fn new_mem_req(bytes: Vec<u8>, format: &TlpFmt) -> Result<Box<dyn MemRequest>, TlpError> {
