@@ -363,7 +363,7 @@ fn new_mem_req_factory_exists() {
 fn new_conf_req_factory_exists() {
     let bytes = vec![0x04, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
     let format = TlpFmt::NoDataHeader3DW;
-    let result = new_conf_req(bytes, &format);
+    let result = new_conf_req(bytes, &format).unwrap();
     // Factory returns Box<dyn ConfigurationRequest>, verify it has the expected methods
     let _req_id = result.req_id();
     let _bus_nr = result.bus_nr();
@@ -373,7 +373,7 @@ fn new_conf_req_factory_exists() {
 fn new_cmpl_req_factory_exists() {
     let bytes = vec![0x0a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
     let format = TlpFmt::NoDataHeader3DW;
-    let result = new_cmpl_req(bytes, &format);
+    let result = new_cmpl_req(bytes, &format).unwrap();
     // Factory returns Box<dyn CompletionRequest>, verify it has the expected methods
     let _req_id = result.req_id();
     let _cmpl_stat = result.cmpl_stat();
@@ -383,7 +383,7 @@ fn new_cmpl_req_factory_exists() {
 fn new_msg_req_factory_exists() {
     let bytes = vec![0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
     let format = TlpFmt::NoDataHeader3DW;
-    let result = new_msg_req(bytes, &format);
+    let result = new_msg_req(bytes, &format).unwrap();
     // Factory returns Box<dyn MessageRequest>, verify it has the expected methods
     let _req_id = result.req_id();
     let _msg_code = result.msg_code();

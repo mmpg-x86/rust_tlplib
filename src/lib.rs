@@ -435,13 +435,16 @@ pub trait ConfigurationRequest {
 /// let tlp = TlpPacket::new(bytes);
 ///
 /// if let Ok(tlpfmt) = tlp.get_tlp_format() {
-///     let config_req: Box<dyn ConfigurationRequest> = new_conf_req(tlp.get_data(), &tlpfmt);
+///     let config_req: Box<dyn ConfigurationRequest> = new_conf_req(tlp.get_data(), &tlpfmt).unwrap();
 ///
 ///     //println!("Configuration Request Bus: {:x}", config_req.bus_nr());
 /// }
 /// ```
-pub fn new_conf_req(bytes: Vec<u8>, _format: &TlpFmt) -> Box<dyn ConfigurationRequest> {
-	Box::new(ConfigRequest(bytes))
+pub fn new_conf_req(bytes: Vec<u8>, format: &TlpFmt) -> Result<Box<dyn ConfigurationRequest>, TlpError> {
+	match format {
+		TlpFmt::NoDataHeader3DW | TlpFmt::WithDataHeader3DW => Ok(Box::new(ConfigRequest(bytes))),
+		_ => Err(TlpError::UnsupportedCombination),
+	}
 }
 
 bitfield! {
@@ -547,14 +550,17 @@ impl <T: AsRef<[u8]>> CompletionRequest for CompletionReqDW23<T> {
 ///
 /// let bytes = vec![0x20, 0x01, 0xFF, 0xC2, 0x00, 0x00, 0x00, 0x00];
 /// // TLP Format usually comes from TlpPacket or Header here we made up one for example
-/// let tlpfmt = TlpFmt::WithDataHeader4DW;
+/// let tlpfmt = TlpFmt::WithDataHeader3DW;
 ///
-/// let cmpl_req: Box<dyn CompletionRequest> = new_cmpl_req(bytes, &tlpfmt);
+/// let cmpl_req: Box<dyn CompletionRequest> = new_cmpl_req(bytes, &tlpfmt).unwrap();
 ///
 /// println!("Requester ID from Completion{}", cmpl_req.req_id());
 /// ```
-pub fn new_cmpl_req(bytes: Vec<u8>, _format: &TlpFmt) -> Box<dyn CompletionRequest> {
-	Box::new(CompletionReqDW23(bytes))
+pub fn new_cmpl_req(bytes: Vec<u8>, format: &TlpFmt) -> Result<Box<dyn CompletionRequest>, TlpError> {
+	match format {
+		TlpFmt::NoDataHeader3DW | TlpFmt::WithDataHeader3DW => Ok(Box::new(CompletionReqDW23(bytes))),
+		_ => Err(TlpError::UnsupportedCombination),
+	}
 }
 
 /// Message Request trait
@@ -609,12 +615,16 @@ impl <T: AsRef<[u8]>> MessageRequest for MessageReqDW24<T> {
 /// let bytes = vec![0x20, 0x01, 0xFF, 0xC2, 0x00, 0x00, 0x00, 0x00];
 /// let tlpfmt = TlpFmt::NoDataHeader3DW;
 ///
-/// let msg_req: Box<dyn MessageRequest> = new_msg_req(bytes, &tlpfmt);
+/// let msg_req: Box<dyn MessageRequest> = new_msg_req(bytes, &tlpfmt).unwrap();
 ///
 /// println!("Requester ID from Message{}", msg_req.req_id());
 /// ```
-pub fn new_msg_req(bytes: Vec<u8>, _format: &TlpFmt) -> Box<dyn MessageRequest> {
-	Box::new(MessageReqDW24(bytes))
+pub fn new_msg_req(bytes: Vec<u8>, format: &TlpFmt) -> Result<Box<dyn MessageRequest>, TlpError> {
+	match format {
+		TlpFmt::NoDataHeader3DW | TlpFmt::NoDataHeader4DW |
+		TlpFmt::WithDataHeader3DW | TlpFmt::WithDataHeader4DW => Ok(Box::new(MessageReqDW24(bytes))),
+		TlpFmt::TlpPrefix => Err(TlpError::UnsupportedCombination),
+	}
 }
 
 /// Atomic Request trait: header fields and operand(s) for atomic op TLPs.
@@ -800,13 +810,13 @@ impl TlpPacketHeader {
 ///      TlpType::ConfType0ReadReq |
 ///      TlpType::ConfType0WriteReq |
 ///      TlpType::ConfType1ReadReq |
-///      TlpType::ConfType1WriteReq => requester_id = new_conf_req(packet.get_data(), &tlp_format).req_id(),
+///      TlpType::ConfType1WriteReq => requester_id = new_conf_req(packet.get_data(), &tlp_format).unwrap().req_id(),
 ///      TlpType::MsgReq |
-///      TlpType::MsgReqData => requester_id = new_msg_req(packet.get_data(), &tlp_format).req_id(),
+///      TlpType::MsgReqData => requester_id = new_msg_req(packet.get_data(), &tlp_format).unwrap().req_id(),
 ///      TlpType::Cpl |
 ///      TlpType::CplData |
 ///      TlpType::CplLocked |
-///      TlpType::CplDataLocked => requester_id = new_cmpl_req(packet.get_data(), &tlp_format).req_id(),
+///      TlpType::CplDataLocked => requester_id = new_cmpl_req(packet.get_data(), &tlp_format).unwrap().req_id(),
 ///      TlpType::LocalTlpPrefix |
 ///      TlpType::EndToEndTlpPrefix => println!("I need to implement TLP Type: {:?}", tlp_type),
 /// }
@@ -961,6 +971,53 @@ mod tests {
         let result = invalid_combo.get_tlp_type();
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), TlpError::UnsupportedCombination);
+    }
+
+    // ── constructor format validation ─────────────────────────────────────
+
+    #[test]
+    fn conf_req_rejects_4dw_formats() {
+        let bytes = vec![0x00; 8];
+        assert!(matches!(new_conf_req(bytes.clone(), &TlpFmt::NoDataHeader4DW), Err(TlpError::UnsupportedCombination)));
+        assert!(matches!(new_conf_req(bytes.clone(), &TlpFmt::WithDataHeader4DW), Err(TlpError::UnsupportedCombination)));
+        assert!(matches!(new_conf_req(bytes, &TlpFmt::TlpPrefix), Err(TlpError::UnsupportedCombination)));
+    }
+
+    #[test]
+    fn conf_req_accepts_3dw_formats() {
+        let bytes = vec![0x00; 8];
+        assert!(new_conf_req(bytes.clone(), &TlpFmt::NoDataHeader3DW).is_ok());
+        assert!(new_conf_req(bytes, &TlpFmt::WithDataHeader3DW).is_ok());
+    }
+
+    #[test]
+    fn cmpl_req_rejects_4dw_formats() {
+        let bytes = vec![0x00; 8];
+        assert!(matches!(new_cmpl_req(bytes.clone(), &TlpFmt::NoDataHeader4DW), Err(TlpError::UnsupportedCombination)));
+        assert!(matches!(new_cmpl_req(bytes.clone(), &TlpFmt::WithDataHeader4DW), Err(TlpError::UnsupportedCombination)));
+        assert!(matches!(new_cmpl_req(bytes, &TlpFmt::TlpPrefix), Err(TlpError::UnsupportedCombination)));
+    }
+
+    #[test]
+    fn cmpl_req_accepts_3dw_formats() {
+        let bytes = vec![0x00; 8];
+        assert!(new_cmpl_req(bytes.clone(), &TlpFmt::NoDataHeader3DW).is_ok());
+        assert!(new_cmpl_req(bytes, &TlpFmt::WithDataHeader3DW).is_ok());
+    }
+
+    #[test]
+    fn msg_req_rejects_tlp_prefix() {
+        let bytes = vec![0x00; 12];
+        assert!(matches!(new_msg_req(bytes, &TlpFmt::TlpPrefix), Err(TlpError::UnsupportedCombination)));
+    }
+
+    #[test]
+    fn msg_req_accepts_all_standard_formats() {
+        let bytes = vec![0x00; 12];
+        assert!(new_msg_req(bytes.clone(), &TlpFmt::NoDataHeader3DW).is_ok());
+        assert!(new_msg_req(bytes.clone(), &TlpFmt::NoDataHeader4DW).is_ok());
+        assert!(new_msg_req(bytes.clone(), &TlpFmt::WithDataHeader3DW).is_ok());
+        assert!(new_msg_req(bytes, &TlpFmt::WithDataHeader4DW).is_ok());
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
