@@ -398,7 +398,7 @@ impl <T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
 ///
 ///
 /// # let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-/// # let _ = decode(bytes);
+/// # decode(bytes).unwrap();
 /// ```
 pub fn new_mem_req(bytes: Vec<u8>, format: &TlpFmt) -> Result<Box<dyn MemRequest>, TlpError> {
     match format {
