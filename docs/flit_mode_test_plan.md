@@ -1,6 +1,6 @@
 # Flit Mode Test Plan
 
-**Status:** Planning — implementation pending  
+**Status:** In progress — Tier 1+2 implemented (v0.4.1); Tier 3–5 pending  
 **Target release:** 0.5.0  
 **Reference:** `docs/flit_mode_tlp_examples.md`
 
@@ -226,13 +226,13 @@ and populates fields correctly.
 
 To unlock each tier, these additions to `src/lib.rs` are required:
 
-| Tier | What to add | New public API |
-|---|---|---|
-| 1 | `FlitDW0` struct + `from_dw0()` | `pub struct FlitDW0`, `pub fn flit_dw0_from_bytes()` |
-| 2 | `FlitTlpType` enum + size table | `pub enum FlitTlpType` |
-| 3 | OHC parser + `MissingMandatoryOhc` | `pub struct FlitOhc`, `TlpError::MissingMandatoryOhc` |
-| 4 | Stream walker | `pub struct FlitStreamWalker` or iterator |
-| 5 | `TlpPacket::new_flit()` | wires `TlpMode::Flit` to new parser |
+| Tier | What to add | New public API | Status |
+|---|---|---|---|
+| 1 | `FlitDW0` struct + `from_dw0()` | `pub struct FlitDW0` | ✅ v0.4.1 |
+| 2 | `FlitTlpType` enum + size table | `pub enum FlitTlpType` | ✅ v0.4.1 |
+| 3 | OHC parser + `MissingMandatoryOhc` | `pub struct FlitOhcA`, `TlpError::MissingMandatoryOhc` | 🔜 next |
+| 4 | Stream walker | `pub struct FlitStreamWalker` or iterator | pending |
+| 5 | `TlpPacket::new_flit()` | wires `TlpMode::Flit` to new parser | pending |
 
 Each tier builds on the previous — merge order matters.
 

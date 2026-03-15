@@ -28,14 +28,14 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rtlp-lib = "0.2"
+rtlp-lib = "0.4"
 ```
 
 ## Usage
 
 ```rust
 use rtlp_lib::{
-    TlpPacket, TlpFmt, TlpType,
+    TlpPacket, TlpFmt, TlpType, TlpMode,
     new_mem_req, new_conf_req, new_cmpl_req, new_msg_req, new_atomic_req,
 };
 
@@ -45,7 +45,7 @@ let bytes = vec![
     0x00, 0x00, 0x20, 0x0F,   // DW1: req_id=0x0000 tag=0x20 BE=0x0F
     0xF6, 0x20, 0x00, 0x0C,   // DW2: address32=0xF620000C
 ];
-let packet = TlpPacket::new(bytes).unwrap();
+let packet = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();
 
 let tlp_type   = packet.get_tlp_type().unwrap();
 let tlp_format = packet.get_tlp_format().unwrap();
@@ -105,9 +105,12 @@ assert!(!TlpType::MemWriteReq.is_non_posted());   // posted
 |---|---|
 | `TlpPacket` | Full packet: DW0 header + remaining data bytes |
 | `TlpPacketHeader` | DW0-only wrapper with accessor methods for every header field |
+| `TlpMode` | Framing mode: `NonFlit` (PCIe 1–5) or `Flit` (PCIe 6.x, stub) |
 | `TlpFmt` | Format enum: `NoDataHeader3DW`, `NoDataHeader4DW`, `WithDataHeader3DW`, `WithDataHeader4DW`, `TlpPrefix` |
-| `TlpType` | 21-variant enum covering all decoded TLP types |
-| `TlpError` | `InvalidFormat`, `InvalidType`, `UnsupportedCombination`, `InvalidLength` |
+| `TlpType` | 21-variant enum covering all decoded non-flit TLP types |
+| `TlpError` | `InvalidFormat`, `InvalidType`, `UnsupportedCombination`, `InvalidLength`, `NotImplemented` |
+| `FlitTlpType` | 13-variant enum for PCIe 6.x flit-mode type codes (Tier 1+2) |
+| `FlitDW0` | Parsed flit-mode DW0: `tlp_type`, `tc`, `ohc`, `ts`, `attr`, `length` |
 
 ### Request Traits and Constructors
 
@@ -136,24 +139,29 @@ Every decoding step returns `Result<_, TlpError>`:
 | `InvalidType` | The 5-bit Type field does not match any known encoding |
 | `UnsupportedCombination` | Valid Fmt + Type individually, but not a legal pair (e.g. DMWr with NoData) |
 | `InvalidLength` | Byte slice is too short for the expected header + payload |
+| `NotImplemented` | Feature exists in the API but is not yet implemented (e.g. `TlpMode::Flit`) |
 
 ## Tests
 
-The crate has **102 tests** across four categories:
+The crate has **156 passing tests** (plus 14 `#[ignore]` flit-mode placeholders):
 
-| Category | File | Count |
-|---|---|---|
-| Unit tests | `src/lib.rs` | 30 |
-| API contract tests | `tests/api_tests.rs` | 50 |
-| Integration tests | `tests/tlp_tests.rs` | 16 |
-| Doc tests | `src/lib.rs` | 6 |
+| Category | File | Passes | Ignored |
+|---|---|---|---|
+| Unit tests | `src/lib.rs` | 48 | 0 |
+| API contract tests | `tests/api_tests.rs` | 60 | 0 |
+| Non-flit integration tests | `tests/non_flit_tests.rs` | 16 | 0 |
+| Flit mode tests | `tests/flit_mode_tests.rs` | 26 | 14 |
+| Doc tests | `src/lib.rs` | 6 | 0 |
 
 ```bash
-cargo test            # run all 102 tests
-cargo test --lib      # unit tests only
-cargo test --test tlp_tests   # integration tests only
-cargo test --doc      # doc examples only
+cargo test                        # run all 156 non-ignored tests
+cargo test --lib                  # unit tests only
+cargo test --test non_flit_tests  # non-flit integration tests only
+cargo test --test flit_mode_tests # flit mode Tier 0+1+2 tests
+cargo test --doc                  # doc examples only
 ```
+
+See [TESTS.md](TESTS.md) for the full test structure and flit mode tier descriptions.
 
 ## Documentation
 

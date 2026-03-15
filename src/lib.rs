@@ -33,6 +33,9 @@ pub enum TlpError {
     InvalidLength,
     /// Feature exists in the API but is not yet implemented
     NotImplemented,
+    /// A TLP type that requires a mandatory OHC word was parsed without it
+    /// (e.g. I/O Write missing OHC-A2, Configuration Write missing OHC-A3)
+    MissingMandatoryOhc,
 }
 
 #[repr(u8)]
@@ -906,6 +909,67 @@ impl FlitDW0 {
             self.length as usize * 4
         };
         header_bytes + payload_bytes
+    }
+}
+
+/// Parsed OHC-A word — the byte layout is shared by OHC-A1, OHC-A2, and OHC-A3.
+///
+/// OHC-A word byte layout (4 bytes, on-wire order):
+///
+/// ```text
+/// Byte 0: flags[7:4] | PASID[19:16]
+/// Byte 1: PASID[15:8]
+/// Byte 2: PASID[7:0]
+/// Byte 3: ldwbe[7:4] | fdwbe[3:0]
+/// ```
+///
+/// Use [`FlitOhcA::from_bytes`] to parse from a byte slice that starts at the
+/// first byte of the OHC-A word (i.e. at offset `base_header_dw * 4` in the TLP).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FlitOhcA {
+    /// 20-bit PASID value extracted from bytes 0–2.
+    pub pasid: u32,
+    /// First DW byte enables (bits [3:0] of byte 3).
+    pub fdwbe: u8,
+    /// Last DW byte enables (bits [7:4] of byte 3).
+    pub ldwbe: u8,
+}
+
+impl FlitOhcA {
+    /// Parse one OHC-A word from the first 4 bytes of `b`.
+    ///
+    /// Returns `Err(TlpError::InvalidLength)` if `b.len() < 4`.
+    pub fn from_bytes(b: &[u8]) -> Result<Self, TlpError> {
+        if b.len() < 4 {
+            return Err(TlpError::InvalidLength);
+        }
+        let pasid = ((b[0] as u32 & 0x0F) << 16)
+            | ((b[1] as u32) << 8)
+            | (b[2] as u32);
+        let fdwbe = b[3] & 0x0F;
+        let ldwbe = (b[3] >> 4) & 0x0F;
+        Ok(FlitOhcA { pasid, fdwbe, ldwbe })
+    }
+}
+
+impl FlitDW0 {
+    /// Validate mandatory OHC rules for this TLP type.
+    ///
+    /// Some flit-mode TLP types **require** an OHC word to be present:
+    /// - `IoWrite` requires OHC-A2 (bit 0 of the OHC bitmap must be set)
+    /// - `CfgWrite0` requires OHC-A3 (bit 0 of the OHC bitmap must be set)
+    ///
+    /// Returns `Err(TlpError::MissingMandatoryOhc)` if the rule is violated.
+    pub fn validate_mandatory_ohc(&self) -> Result<(), TlpError> {
+        match self.tlp_type {
+            FlitTlpType::IoWrite | FlitTlpType::CfgWrite0 => {
+                if self.ohc & 0x01 == 0 {
+                    return Err(TlpError::MissingMandatoryOhc);
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
     }
 }
 

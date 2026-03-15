@@ -465,63 +465,76 @@ fn flit_t2_local_prefix_base_header_is_1dw() {
 
 // ============================================================================
 // Tier 3 — OHC field parsing and mandatory OHC validation
-//
-// #[ignore] — pending: OHC parser + TlpError::MissingMandatoryOhc variant
 // ============================================================================
 
 #[test]
-#[ignore = "pending: OHC parser not yet implemented (Tier 3)"]
 fn flit_t3_mrd32_a1_pasid_extraction() {
-    todo!(
-        "FM_MRD32_A1_PASID: OHC-A1 word = [0x01,0x23,0x45,0x0F]
-         → PASID = 0x12345, fdwbe = 0xF, ldwbe = 0x0"
-    );
+    // FM_MRD32_A1_PASID: 3 DW base header → OHC-A word starts at byte 12
+    // OHC-A1 word = [0x01, 0x23, 0x45, 0x0F]
+    let dw0 = FlitDW0::from_dw0(&FM_MRD32_A1_PASID).unwrap();
+    let ohc_offset = dw0.tlp_type.base_header_dw() as usize * 4; // = 12
+    let ohc = FlitOhcA::from_bytes(&FM_MRD32_A1_PASID[ohc_offset..]).unwrap();
+    assert_eq!(ohc.pasid, 0x12345);
+    assert_eq!(ohc.fdwbe, 0xF);
+    assert_eq!(ohc.ldwbe, 0x0);
 }
 
 #[test]
-#[ignore = "pending: OHC parser not yet implemented (Tier 3)"]
 fn flit_t3_mwr32_partial_a1_be_extraction() {
-    todo!(
-        "FM_MWR32_PARTIAL_A1: OHC-A1 word = [0x00,0x00,0x00,0x03]
-         → fdwbe = 0x3 (partial-byte write), ldwbe = 0x0"
-    );
+    // FM_MWR32_PARTIAL_A1: OHC-A1 word = [0x00, 0x00, 0x00, 0x03]
+    let dw0 = FlitDW0::from_dw0(&FM_MWR32_PARTIAL_A1).unwrap();
+    let ohc_offset = dw0.tlp_type.base_header_dw() as usize * 4; // = 12
+    let ohc = FlitOhcA::from_bytes(&FM_MWR32_PARTIAL_A1[ohc_offset..]).unwrap();
+    assert_eq!(ohc.pasid, 0);
+    assert_eq!(ohc.fdwbe, 0x3); // partial-byte write
+    assert_eq!(ohc.ldwbe, 0x0);
 }
 
 #[test]
-#[ignore = "pending: OHC parser not yet implemented (Tier 3)"]
 fn flit_t3_iowr_a2_mandatory_ohc_present() {
-    todo!(
-        "FM_IOWR_A2: OHC-A2 present (byte1 bit0=1)
-         → parser succeeds and extracts fdwbe=0xF"
-    );
+    // FM_IOWR_A2: OHC-A2 present (byte1 bit0=1) → validation succeeds
+    let dw0 = FlitDW0::from_dw0(&FM_IOWR_A2).unwrap();
+    assert!(dw0.validate_mandatory_ohc().is_ok());
+    // Also verify OHC-A2 word content
+    let ohc_offset = dw0.tlp_type.base_header_dw() as usize * 4; // = 12
+    let ohc = FlitOhcA::from_bytes(&FM_IOWR_A2[ohc_offset..]).unwrap();
+    assert_eq!(ohc.fdwbe, 0xF);
+    assert_eq!(ohc.ldwbe, 0x0);
 }
 
 #[test]
-#[ignore = "pending: OHC parser not yet implemented (Tier 3)"]
 fn flit_t3_iowr_missing_mandatory_ohc_a2() {
+    // FM_IOWR_A2 with byte1 cleared → missing mandatory OHC-A2 → error
     let mut bad = FM_IOWR_A2.to_vec();
-    bad[1] = 0x00; // clear OHC flags — mandatory OHC-A2 missing
-    todo!(
-        "parse_flit_tlp(&bad) → Err(TlpError::MissingMandatoryOhc)"
+    bad[1] = 0x00; // clear OHC flags
+    let dw0 = FlitDW0::from_dw0(&bad).unwrap();
+    assert_eq!(
+        dw0.validate_mandatory_ohc(),
+        Err(TlpError::MissingMandatoryOhc)
     );
 }
 
 #[test]
-#[ignore = "pending: OHC parser not yet implemented (Tier 3)"]
 fn flit_t3_cfgwr0_a3_mandatory_ohc_present() {
-    todo!(
-        "FM_CFGWR0_A3: OHC-A3 present
-         → parser succeeds and extracts fdwbe=0xF"
-    );
+    // FM_CFGWR0_A3: OHC-A3 present (byte1 bit0=1) → validation succeeds
+    let dw0 = FlitDW0::from_dw0(&FM_CFGWR0_A3).unwrap();
+    assert!(dw0.validate_mandatory_ohc().is_ok());
+    // Also verify OHC-A3 word content
+    let ohc_offset = dw0.tlp_type.base_header_dw() as usize * 4; // = 12
+    let ohc = FlitOhcA::from_bytes(&FM_CFGWR0_A3[ohc_offset..]).unwrap();
+    assert_eq!(ohc.fdwbe, 0xF);
+    assert_eq!(ohc.ldwbe, 0x0);
 }
 
 #[test]
-#[ignore = "pending: OHC parser not yet implemented (Tier 3)"]
 fn flit_t3_cfgwr_missing_mandatory_ohc_a3() {
+    // FM_CFGWR0_A3 with byte1 cleared → missing mandatory OHC-A3 → error
     let mut bad = FM_CFGWR0_A3.to_vec();
-    bad[1] = 0x00; // clear OHC flags — mandatory OHC-A3 missing
-    todo!(
-        "parse_flit_tlp(&bad) → Err(TlpError::MissingMandatoryOhc)"
+    bad[1] = 0x00; // clear OHC flags
+    let dw0 = FlitDW0::from_dw0(&bad).unwrap();
+    assert_eq!(
+        dw0.validate_mandatory_ohc(),
+        Err(TlpError::MissingMandatoryOhc)
     );
 }
 

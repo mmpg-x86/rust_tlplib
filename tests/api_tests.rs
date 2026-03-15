@@ -17,6 +17,7 @@ fn error_type_exists_and_is_public() {
     let _err3: TlpError = TlpError::UnsupportedCombination;
     let _err4: TlpError = TlpError::InvalidLength;
     let _err5: TlpError = TlpError::NotImplemented;
+    let _err6: TlpError = TlpError::MissingMandatoryOhc;
 }
 
 #[test]
@@ -541,8 +542,8 @@ fn api_all_expected_public_types_are_available() {
         CompletionReqDW23, MessageReqDW24,
         AtomicOp, AtomicWidth,
         new_mem_req, new_conf_req, new_cmpl_req, new_msg_req, new_atomic_req,
-        // Flit mode types (Tier 1+2)
-        FlitTlpType, FlitDW0,
+        // Flit mode types (Tier 1+2+3)
+        FlitTlpType, FlitDW0, FlitOhcA,
     };
     
     // Use types to prevent unused warnings
@@ -572,6 +573,47 @@ fn api_all_expected_public_types_are_available() {
     // Flit mode public API — will fail to compile if removed or renamed
     let _: Option<FlitTlpType> = None;
     let _: Option<FlitDW0> = None;
+    let _: Option<FlitOhcA> = None;
+}
+
+#[test]
+fn flit_ohc_a_struct_is_public_and_constructible() {
+    // OHC-A word [0x01, 0x23, 0x45, 0x0F]: PASID=0x12345, fdwbe=0xF, ldwbe=0x0
+    let ohc = FlitOhcA::from_bytes(&[0x01, 0x23, 0x45, 0x0F]).unwrap();
+    let _: u32 = ohc.pasid;
+    let _: u8  = ohc.fdwbe;
+    let _: u8  = ohc.ldwbe;
+    assert_eq!(ohc.pasid, 0x12345);
+    assert_eq!(ohc.fdwbe, 0xF);
+    assert_eq!(ohc.ldwbe, 0x0);
+}
+
+#[test]
+fn flit_ohc_a_short_slice_returns_invalid_length() {
+    assert_eq!(
+        FlitOhcA::from_bytes(&[0x00, 0x00, 0x00]).err().unwrap(),
+        TlpError::InvalidLength
+    );
+}
+
+#[test]
+fn flit_missing_mandatory_ohc_error_is_distinct() {
+    let e = TlpError::MissingMandatoryOhc;
+    assert_eq!(e, TlpError::MissingMandatoryOhc);
+    assert_ne!(e, TlpError::NotImplemented);
+    assert_ne!(e, TlpError::InvalidType);
+    let s = format!("{:?}", e);
+    assert!(s.contains("MissingMandatoryOhc"));
+}
+
+#[test]
+fn flit_validate_mandatory_ohc_non_mandatory_types_always_pass() {
+    // Non-mandatory types succeed even without OHC
+    let nop_dw0 = FlitDW0::from_dw0(&[0x00, 0x00, 0x00, 0x00]).unwrap(); // Nop, ohc=0
+    assert!(nop_dw0.validate_mandatory_ohc().is_ok());
+
+    let mwr_dw0 = FlitDW0::from_dw0(&[0x40, 0x00, 0x00, 0x01]).unwrap(); // MemWrite32, ohc=0
+    assert!(mwr_dw0.validate_mandatory_ohc().is_ok());
 }
 
 // ============================================================================
