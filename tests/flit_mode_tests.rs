@@ -179,7 +179,7 @@ fn flit_packet_new_succeeds_for_valid_flit() {
     // TlpMode::Flit is now implemented -- MRd32 flit (3 DW header, no payload)
     let pkt = TlpPacket::new(FM_MRD32_MIN.to_vec(), TlpMode::Flit).unwrap();
     assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::MemRead32));
-    assert!(pkt.get_data().is_empty()); // read request, no payload
+    assert!(pkt.data().is_empty()); // read request, no payload
 }
 
 #[test]
@@ -602,7 +602,7 @@ fn flit_t5_end_to_end_mrd32_min() {
     // MRd32 flit: 3 DW base header, no payload despite Length=1
     let pkt = TlpPacket::new(FM_MRD32_MIN.to_vec(), TlpMode::Flit).unwrap();
     assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::MemRead32));
-    assert!(pkt.get_data().is_empty());
+    assert!(pkt.data().is_empty());
 }
 
 #[test]
@@ -610,7 +610,7 @@ fn flit_t5_end_to_end_mwr32_min() {
     // MWr32 flit: 3 DW header + 1 DW payload
     let pkt = TlpPacket::new(FM_MWR32_MIN.to_vec(), TlpMode::Flit).unwrap();
     assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::MemWrite32));
-    assert_eq!(pkt.get_data(), vec![0xDE, 0xAD, 0xBE, 0xEF]);
+    assert_eq!(pkt.data(), [0xDE, 0xAD, 0xBE, 0xEF]);
 }
 
 #[test]
@@ -618,7 +618,7 @@ fn flit_t5_end_to_end_cas32() {
     // CAS32 flit: 3 DW header + 2 DW payload (compare + swap)
     let pkt = TlpPacket::new(FM_CAS32.to_vec(), TlpMode::Flit).unwrap();
     assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::CompareSwap32));
-    assert_eq!(pkt.get_data(), vec![
+    assert_eq!(pkt.data(), [
         0x11, 0x11, 0x11, 0x11, // compare
         0x22, 0x22, 0x22, 0x22, // swap
     ]);
@@ -629,7 +629,7 @@ fn flit_t5_end_to_end_dmwr32() {
     // DMWr32 flit: 3 DW header + 1 DW payload
     let pkt = TlpPacket::new(FM_DMWR32.to_vec(), TlpMode::Flit).unwrap();
     assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::DeferrableMemWrite32));
-    assert_eq!(pkt.get_data(), vec![0xC0, 0xFF, 0xEE, 0x00]);
+    assert_eq!(pkt.data(), [0xC0, 0xFF, 0xEE, 0x00]);
 }
 
 #[test]
@@ -637,7 +637,7 @@ fn flit_t5_end_to_end_uiomwr64() {
     // UIOMWr64 flit: 4 DW header + 2 DW payload
     let pkt = TlpPacket::new(FM_UIOMWR64_MIN.to_vec(), TlpMode::Flit).unwrap();
     assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::UioMemWrite));
-    assert_eq!(pkt.get_data(), vec![
+    assert_eq!(pkt.data(), [
         0x11, 0x22, 0x33, 0x44,
         0x55, 0x66, 0x77, 0x88,
     ]);
@@ -648,7 +648,7 @@ fn flit_t5_nop_has_no_data() {
     // NOP flit: 1 DW header, no payload
     let pkt = TlpPacket::new(FM_NOP.to_vec(), TlpMode::Flit).unwrap();
     assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::Nop));
-    assert!(pkt.get_data().is_empty());
+    assert!(pkt.data().is_empty());
 }
 
 #[test]
