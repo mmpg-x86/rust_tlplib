@@ -740,7 +740,7 @@ fn read_operand_be(b: &[u8], off: usize, width: AtomicWidth) -> u64 {
 pub fn new_atomic_req(pkt: &TlpPacket) -> Result<Box<dyn AtomicRequest>, TlpError> {
     let tlp_type = pkt.get_tlp_type()?;
     let format   = pkt.get_tlp_format()?;
-    let bytes    = pkt.get_data();
+    let bytes    = pkt.data();
 
     let op = match tlp_type {
         TlpType::FetchAddAtomicOpReq    => AtomicOp::FetchAdd,
@@ -1235,12 +1235,21 @@ impl TlpPacket {
         &self.header
     }
 
-    /// Returns the packet payload bytes (everything after the 4-byte DW0 header)
-    /// as an owned `Vec<u8>`.
+    /// Returns the packet payload bytes (everything after the 4-byte DW0 header).
     ///
     /// For flit-mode read requests this will be empty even when `Length > 0`.
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
+    /// Returns the packet payload bytes as an owned `Vec<u8>`.
+    ///
+    /// # Deprecation
+    ///
+    /// Prefer [`TlpPacket::data`] which returns `&[u8]` without allocating.
+    #[deprecated(since = "0.6.0", note = "use data() which returns &[u8] instead")]
     pub fn get_data(&self) -> Vec<u8> {
-        self.data.to_vec()
+        self.data.clone()
     }
 
     /// Decode and return the TLP type from the DW0 header fields.
