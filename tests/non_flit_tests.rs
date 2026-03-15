@@ -27,7 +27,7 @@ fn test_tlp_packet() {
     let tlp = TlpPacket::new(d, TlpMode::NonFlit).unwrap();
 
     assert_eq!(tlp.get_tlp_type().unwrap(), TlpType::ConfType0ReadReq);
-    assert_eq!(tlp.get_data(), vec![0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10]);
+    assert_eq!(tlp.data(), [0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10]);
 }
 
 #[test]

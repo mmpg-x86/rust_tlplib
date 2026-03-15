@@ -107,7 +107,7 @@ fn tlp_mode_flit_packet_new_succeeds() {
     let bytes = vec![0x00u8; 4];
     let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
     assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::Nop));
-    assert!(pkt.get_data().is_empty());
+    assert!(pkt.data().is_empty());
 }
 
 #[test]
@@ -269,12 +269,24 @@ fn tlp_packet_get_tlp_format_exists() {
     assert!(format.is_ok());
 }
 
+/// API contract test: `get_data()` is deprecated but must continue to work
+/// until it is fully removed in a future semver break.
+/// See also `tlp_packet_data_method_exists` for the new non-allocating form.
 #[test]
+#[allow(deprecated)]
 fn tlp_packet_get_data_exists() {
     let data = vec![0x00, 0x00, 0x00, 0x01, 0xAA, 0xBB, 0xCC, 0xDD];
     let packet = TlpPacket::new(data.clone(), TlpMode::NonFlit).unwrap();
-    let returned_data = packet.get_data();
+    let returned_data = packet.get_data(); // deprecated — tests backward compat
     assert_eq!(returned_data, vec![0xAA, 0xBB, 0xCC, 0xDD]);
+}
+
+#[test]
+fn tlp_packet_data_method_exists() {
+    // Preferred non-allocating form: data() returns &[u8]
+    let data = vec![0x00, 0x00, 0x00, 0x01, 0xAA, 0xBB, 0xCC, 0xDD];
+    let packet = TlpPacket::new(data, TlpMode::NonFlit).unwrap();
+    assert_eq!(packet.data(), [0xAA, 0xBB, 0xCC, 0xDD]);
 }
 
 // ============================================================================
@@ -718,14 +730,14 @@ fn tlp_packet_handles_minimum_size() {
 fn tlp_packet_handles_empty_data_section() {
     let data = vec![0x00, 0x00, 0x00, 0x01];
     let packet = TlpPacket::new(data, TlpMode::NonFlit).unwrap();
-    assert_eq!(packet.get_data(), Vec::<u8>::new());
+    assert!(packet.data().is_empty());
 }
 
 #[test]
 fn tlp_packet_preserves_data_payload() {
-    let payload = vec![0xDE, 0xAD, 0xBE, 0xEF];
+    let payload = [0xDE, 0xAD, 0xBE, 0xEF];
     let mut data = vec![0x00, 0x00, 0x00, 0x01];
     data.extend_from_slice(&payload);
     let packet = TlpPacket::new(data, TlpMode::NonFlit).unwrap();
-    assert_eq!(packet.get_data(), payload);
+    assert_eq!(packet.data(), payload);
 }
