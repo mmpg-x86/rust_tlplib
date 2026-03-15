@@ -80,12 +80,12 @@ impl TryFrom<u32> for TlpFmt {
 
     fn try_from(v: u32) -> Result<Self, Self::Error> {
         match v {
-            x if x == TlpFmt::NoDataHeader3DW as u32 => Ok(TlpFmt::NoDataHeader3DW),
-            x if x == TlpFmt::NoDataHeader4DW as u32 => Ok(TlpFmt::NoDataHeader4DW),
-            x if x == TlpFmt::WithDataHeader3DW as u32 => Ok(TlpFmt::WithDataHeader3DW),
-            x if x == TlpFmt::WithDataHeader4DW as u32 => Ok(TlpFmt::WithDataHeader4DW),
-            x if x == TlpFmt::TlpPrefix as u32 => Ok(TlpFmt::TlpPrefix),
-            _ => Err(TlpError::InvalidFormat),
+            0b000 => Ok(TlpFmt::NoDataHeader3DW),
+            0b001 => Ok(TlpFmt::NoDataHeader4DW),
+            0b010 => Ok(TlpFmt::WithDataHeader3DW),
+            0b011 => Ok(TlpFmt::WithDataHeader4DW),
+            0b100 => Ok(TlpFmt::TlpPrefix),
+            _     => Err(TlpError::InvalidFormat),
         }
     }
 }
@@ -125,18 +125,18 @@ impl TryFrom<u32> for TlpFormatEncodingType {
 
     fn try_from(v: u32) -> Result<Self, Self::Error> {
         match v {
-            x if x == TlpFormatEncodingType::MemoryRequest as u32 			=> Ok(TlpFormatEncodingType::MemoryRequest),
-            x if x == TlpFormatEncodingType::MemoryLockRequest as u32 		=> Ok(TlpFormatEncodingType::MemoryLockRequest),
-            x if x == TlpFormatEncodingType::IORequest as u32 				=> Ok(TlpFormatEncodingType::IORequest),
-            x if x == TlpFormatEncodingType::ConfigType0Request as u32 		=> Ok(TlpFormatEncodingType::ConfigType0Request),
-            x if x == TlpFormatEncodingType::ConfigType1Request as u32 		=> Ok(TlpFormatEncodingType::ConfigType1Request),
-            x if x == TlpFormatEncodingType::Completion as u32 				=> Ok(TlpFormatEncodingType::Completion),
-            x if x == TlpFormatEncodingType::CompletionLocked  as u32 		=> Ok(TlpFormatEncodingType::CompletionLocked),
-            x if x == TlpFormatEncodingType::FetchAtomicOpRequest as u32 	=> Ok(TlpFormatEncodingType::FetchAtomicOpRequest),
-            x if x == TlpFormatEncodingType::UnconSwapAtomicOpRequest as u32 => Ok(TlpFormatEncodingType::UnconSwapAtomicOpRequest),
-            x if x == TlpFormatEncodingType::CompSwapAtomicOpRequest as u32 => Ok(TlpFormatEncodingType::CompSwapAtomicOpRequest),
-            x if x == TlpFormatEncodingType::DeferrableMemoryWriteRequest as u32 => Ok(TlpFormatEncodingType::DeferrableMemoryWriteRequest),
-            _ => Err(TlpError::InvalidType),
+            0b00000 => Ok(TlpFormatEncodingType::MemoryRequest),
+            0b00001 => Ok(TlpFormatEncodingType::MemoryLockRequest),
+            0b00010 => Ok(TlpFormatEncodingType::IORequest),
+            0b00100 => Ok(TlpFormatEncodingType::ConfigType0Request),
+            0b00101 => Ok(TlpFormatEncodingType::ConfigType1Request),
+            0b01010 => Ok(TlpFormatEncodingType::Completion),
+            0b01011 => Ok(TlpFormatEncodingType::CompletionLocked),
+            0b01100 => Ok(TlpFormatEncodingType::FetchAtomicOpRequest),
+            0b01101 => Ok(TlpFormatEncodingType::UnconSwapAtomicOpRequest),
+            0b01110 => Ok(TlpFormatEncodingType::CompSwapAtomicOpRequest),
+            0b11011 => Ok(TlpFormatEncodingType::DeferrableMemoryWriteRequest),
+            _       => Err(TlpError::InvalidType),
         }
     }
 }
