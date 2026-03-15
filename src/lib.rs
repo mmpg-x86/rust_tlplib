@@ -16,7 +16,8 @@ pub enum TlpMode {
     NonFlit,
 
     /// Flit-mode TLP framing (PCIe 6.0+).
-    /// Not yet implemented — returns `Err(TlpError::NotImplemented)`.
+    /// Supported by `TlpPacket::new` and `TlpPacket::get_flit_type()`.
+    /// `TlpPacketHeader::new` with this mode returns `Err(TlpError::NotImplemented)`.
     Flit,
 }
 
@@ -859,15 +860,15 @@ impl TryFrom<u8> for FlitTlpType {
 pub struct FlitDW0 {
     /// Decoded TLP type.
     pub tlp_type: FlitTlpType,
-    /// Traffic Class (bits [2:0] of byte 1).
+    /// Traffic Class (bits `[2:0]` of byte 1).
     pub tc: u8,
-    /// OHC presence bitmap (bits [4:0] of byte 1).
+    /// OHC presence bitmap (bits `[4:0]` of byte 1).
     /// Each set bit indicates one Optional Header Content word appended
     /// after the base header. Use [`FlitDW0::ohc_count`] for the DW count.
     pub ohc: u8,
-    /// Transaction Steering (bits [7:5] of byte 2).
+    /// Transaction Steering (bits `[7:5]` of byte 2).
     pub ts: u8,
-    /// Attributes (bits [4:2] of byte 2).
+    /// Attributes (bits `[4:2]` of byte 2).
     pub attr: u8,
     /// Payload length in DW. A value of `0` encodes 1024 DW.
     pub length: u16,
@@ -929,9 +930,9 @@ impl FlitDW0 {
 pub struct FlitOhcA {
     /// 20-bit PASID value extracted from bytes 0–2.
     pub pasid: u32,
-    /// First DW byte enables (bits [3:0] of byte 3).
+    /// First DW byte enables (bits `[3:0]` of byte 3).
     pub fdwbe: u8,
-    /// Last DW byte enables (bits [7:4] of byte 3).
+    /// Last DW byte enables (bits `[7:4]` of byte 3).
     pub ldwbe: u8,
 }
 

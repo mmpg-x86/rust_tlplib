@@ -28,7 +28,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rtlp-lib = "0.4"
+rtlp-lib = "0.5"
 ```
 
 ## Usage
@@ -99,18 +99,41 @@ assert!(!TlpType::MemWriteReq.is_non_posted());   // posted
 
 ## Public API Overview
 
-### Core Types
+### Core Types (Non-Flit)
 
 | Type | Description |
 |---|---|
 | `TlpPacket` | Full packet: DW0 header + remaining data bytes |
 | `TlpPacketHeader` | DW0-only wrapper with accessor methods for every header field |
-| `TlpMode` | Framing mode: `NonFlit` (PCIe 1–5) or `Flit` (PCIe 6.x, stub) |
+| `TlpMode` | Framing mode: `NonFlit` (PCIe 1–5) or `Flit` (PCIe 6.x) |
 | `TlpFmt` | Format enum: `NoDataHeader3DW`, `NoDataHeader4DW`, `WithDataHeader3DW`, `WithDataHeader4DW`, `TlpPrefix` |
 | `TlpType` | 21-variant enum covering all decoded non-flit TLP types |
-| `TlpError` | `InvalidFormat`, `InvalidType`, `UnsupportedCombination`, `InvalidLength`, `NotImplemented` |
-| `FlitTlpType` | 13-variant enum for PCIe 6.x flit-mode type codes (Tier 1+2) |
-| `FlitDW0` | Parsed flit-mode DW0: `tlp_type`, `tc`, `ohc`, `ts`, `attr`, `length` |
+| `TlpError` | `InvalidFormat`, `InvalidType`, `UnsupportedCombination`, `InvalidLength`, `NotImplemented`, `MissingMandatoryOhc` |
+
+### Flit Mode Types (PCIe 6.x)
+
+| Type | Description |
+|---|---|
+| `FlitTlpType` | 13-variant enum for flit-mode type codes (`TryFrom<u8>`, `base_header_dw()`, `is_read_request()`) |
+| `FlitDW0` | Parsed flit-mode DW0: `tlp_type`, `tc`, `ohc`, `ts`, `attr`, `length`; `from_dw0()`, `total_bytes()` |
+| `FlitOhcA` | Parsed OHC-A word: `pasid`, `fdwbe`, `ldwbe`; `from_bytes()` |
+| `FlitStreamWalker` | Iterator over a packed flit TLP byte stream; yields `(offset, FlitTlpType, size)` per TLP |
+
+```rust
+use rtlp_lib::{TlpPacket, TlpMode, FlitStreamWalker, FlitTlpType};
+
+// Parse a single flit TLP
+let nop_bytes = vec![0x00u8, 0x00, 0x00, 0x00];
+let pkt = TlpPacket::new(nop_bytes, TlpMode::Flit).unwrap();
+assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::Nop));
+
+// Walk a packed stream of back-to-back flit TLPs
+let stream: &[u8] = &[/* packed bytes */];
+for result in FlitStreamWalker::new(stream) {
+    let (offset, typ, size) = result.unwrap();
+    println!("TLP at offset {}: {:?} ({} bytes)", offset, typ, size);
+}
+```
 
 ### Request Traits and Constructors
 
@@ -139,25 +162,26 @@ Every decoding step returns `Result<_, TlpError>`:
 | `InvalidType` | The 5-bit Type field does not match any known encoding |
 | `UnsupportedCombination` | Valid Fmt + Type individually, but not a legal pair (e.g. DMWr with NoData) |
 | `InvalidLength` | Byte slice is too short for the expected header + payload |
-| `NotImplemented` | Feature exists in the API but is not yet implemented (e.g. `TlpMode::Flit`) |
+| `NotImplemented` | Feature exists in the API but is not yet implemented (e.g. `TlpPacketHeader::new` with `Flit`) |
+| `MissingMandatoryOhc` | Flit TLP type requires an OHC word that was absent (IOWr/CfgWr) |
 
 ## Tests
 
-The crate has **156 passing tests** (plus 14 `#[ignore]` flit-mode placeholders):
+The crate has **180 passing tests** (0 ignored):
 
 | Category | File | Passes | Ignored |
 |---|---|---|---|
-| Unit tests | `src/lib.rs` | 48 | 0 |
-| API contract tests | `tests/api_tests.rs` | 60 | 0 |
+| Unit tests | `src/lib.rs` | 51 | 0 |
+| API contract tests | `tests/api_tests.rs` | 64 | 0 |
 | Non-flit integration tests | `tests/non_flit_tests.rs` | 16 | 0 |
-| Flit mode tests | `tests/flit_mode_tests.rs` | 26 | 14 |
-| Doc tests | `src/lib.rs` | 6 | 0 |
+| Flit mode tests | `tests/flit_mode_tests.rs` | 42 | 0 |
+| Doc tests | `src/lib.rs` | 7 | 0 |
 
 ```bash
-cargo test                        # run all 156 non-ignored tests
+cargo test                        # run all 180 tests
 cargo test --lib                  # unit tests only
 cargo test --test non_flit_tests  # non-flit integration tests only
-cargo test --test flit_mode_tests # flit mode Tier 0+1+2 tests
+cargo test --test flit_mode_tests # flit mode tests (all tiers)
 cargo test --doc                  # doc examples only
 ```
 
