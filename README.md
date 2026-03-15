@@ -28,7 +28,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rtlp-lib = "0.2"
+rtlp-lib = "0.4"
 ```
 
 ## Usage
@@ -67,17 +67,17 @@ match tlp_type {
     }
     TlpType::ConfType0ReadReq | TlpType::ConfType0WriteReq |
     TlpType::ConfType1ReadReq | TlpType::ConfType1WriteReq => {
-        let cr = new_conf_req(packet.get_data(), &tlp_format);
+        let cr = new_conf_req(packet.get_data(), &tlp_format).unwrap();
         println!("config bus={} dev={} func={}",
                  cr.bus_nr(), cr.dev_nr(), cr.func_nr());
     }
     TlpType::Cpl | TlpType::CplData |
     TlpType::CplLocked | TlpType::CplDataLocked => {
-        let cpl = new_cmpl_req(packet.get_data(), &tlp_format);
+        let cpl = new_cmpl_req(packet.get_data(), &tlp_format).unwrap();
         println!("completion status={}", cpl.cmpl_stat());
     }
     TlpType::MsgReq | TlpType::MsgReqData => {
-        let msg = new_msg_req(packet.get_data(), &tlp_format);
+        let msg = new_msg_req(packet.get_data(), &tlp_format).unwrap();
         println!("message code=0x{:02X}", msg.msg_code());
     }
     _ => println!("TLP type: {:?}", tlp_type),
