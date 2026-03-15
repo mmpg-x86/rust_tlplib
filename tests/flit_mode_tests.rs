@@ -656,3 +656,35 @@ fn flit_t5_nonflit_packet_get_flit_type_returns_none() {
     let pkt = TlpPacket::new(vec![0x00, 0x00, 0x00, 0x01], TlpMode::NonFlit).unwrap();
     assert_eq!(pkt.get_flit_type(), None);
 }
+
+// ============================================================================
+// Tier 5 atomic operand value verification
+// Verifies the actual operand bytes in FM_FETCHADD32 and FM_CAS32 are correct.
+// Note: new_atomic_req() requires NonFlit packets; here we verify operand bytes
+// directly from data() since flit mode doesn't yet expose an atomic parser.
+// ============================================================================
+
+#[test]
+fn flit_t5_fetchadd32_operand_value_in_payload() {
+    // FM_FETCHADD32 operand = 0x01000000 (comment says "Operand = 0x01000000")
+    // Verify: parse the flit packet and check that data() contains the operand bytes
+    let pkt = TlpPacket::new(FM_FETCHADD32.to_vec(), TlpMode::Flit).unwrap();
+    assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::FetchAdd32));
+    // Payload = 3 DW header consumed, remaining = [0x01, 0x00, 0x00, 0x00]
+    assert_eq!(pkt.data().len(), 4, "FetchAdd32 has 1 DW operand");
+    let operand = u32::from_be_bytes([pkt.data()[0], pkt.data()[1], pkt.data()[2], pkt.data()[3]]);
+    assert_eq!(operand, 0x01000000, "FM_FETCHADD32 addend should be 0x01000000");
+}
+
+#[test]
+fn flit_t5_cas32_operand_values_in_payload() {
+    // FM_CAS32: Compare=0x11111111, Swap=0x22222222 (as documented in the constant)
+    let pkt = TlpPacket::new(FM_CAS32.to_vec(), TlpMode::Flit).unwrap();
+    assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::CompareSwap32));
+    // Payload = 3 DW header consumed, remaining = 8 bytes (compare + swap)
+    assert_eq!(pkt.data().len(), 8, "CAS32 has 2 DW payload (compare + swap)");
+    let compare = u32::from_be_bytes([pkt.data()[0], pkt.data()[1], pkt.data()[2], pkt.data()[3]]);
+    let swap    = u32::from_be_bytes([pkt.data()[4], pkt.data()[5], pkt.data()[6], pkt.data()[7]]);
+    assert_eq!(compare, 0x11111111, "FM_CAS32 compare operand");
+    assert_eq!(swap,    0x22222222, "FM_CAS32 swap operand");
+}
