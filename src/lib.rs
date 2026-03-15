@@ -1662,6 +1662,21 @@ mod tests {
         // DMWr: WithData only (3DW and 4DW)
         assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_DMWR).get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
         assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_DMWR).get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
+
+        // Message Requests: all 6 routing sub-types, no-data → MsgReq, with-data → MsgReqData
+        // Type[4:0]: 10000=routeRC, 10001=routeAddr, 10010=routeID,
+        //            10011=broadcast, 10100=local, 10101=gathered
+        for routing in 0b10000u8..=0b10101u8 {
+            assert_eq!(dw0(FMT_3DW_NO_DATA,   routing).get_tlp_type().unwrap(), TlpType::MsgReq,
+                "Fmt=000 Type={:#07b} should be MsgReq", routing);
+            assert_eq!(dw0(FMT_4DW_NO_DATA,   routing).get_tlp_type().unwrap(), TlpType::MsgReq,
+                "Fmt=001 Type={:#07b} should be MsgReq", routing);
+            assert_eq!(dw0(FMT_3DW_WITH_DATA, routing).get_tlp_type().unwrap(), TlpType::MsgReqData,
+                "Fmt=010 Type={:#07b} should be MsgReqData", routing);
+            assert_eq!(dw0(FMT_4DW_WITH_DATA, routing).get_tlp_type().unwrap(), TlpType::MsgReqData,
+                "Fmt=011 Type={:#07b} should be MsgReqData", routing);
+        }
+
     }
 
     // ── negative path: every illegal (fmt, type) pair → UnsupportedCombination ─
@@ -1672,7 +1687,6 @@ mod tests {
         const FMT_4DW_NO_DATA:   u8 = 0b001;
         const FMT_3DW_WITH_DATA: u8 = 0b010;
         const FMT_4DW_WITH_DATA: u8 = 0b011;
-        const FMT_PREFIX:        u8 = 0b100;
 
         const TY_MEM_LK:     u8 = 0b00001;
         const TY_IO:         u8 = 0b00010;
