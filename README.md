@@ -108,7 +108,7 @@ assert!(!TlpType::MemWriteReq.is_non_posted());   // posted
 | `TlpMode` | Framing mode: `NonFlit` (PCIe 1–5) or `Flit` (PCIe 6.x, stub) |
 | `TlpFmt` | Format enum: `NoDataHeader3DW`, `NoDataHeader4DW`, `WithDataHeader3DW`, `WithDataHeader4DW`, `TlpPrefix` |
 | `TlpType` | 21-variant enum covering all decoded non-flit TLP types |
-| `TlpError` | `InvalidFormat`, `InvalidType`, `UnsupportedCombination`, `InvalidLength`, `NotImplemented` |
+| `TlpError` | `InvalidFormat`, `InvalidType`, `UnsupportedCombination`, `InvalidLength`, `NotImplemented`, `MissingMandatoryOhc` |
 | `FlitTlpType` | 13-variant enum for PCIe 6.x flit-mode type codes (Tier 1+2) |
 | `FlitDW0` | Parsed flit-mode DW0: `tlp_type`, `tc`, `ohc`, `ts`, `attr`, `length` |
 
@@ -140,24 +140,25 @@ Every decoding step returns `Result<_, TlpError>`:
 | `UnsupportedCombination` | Valid Fmt + Type individually, but not a legal pair (e.g. DMWr with NoData) |
 | `InvalidLength` | Byte slice is too short for the expected header + payload |
 | `NotImplemented` | Feature exists in the API but is not yet implemented (e.g. `TlpMode::Flit`) |
+| `MissingMandatoryOhc` | A flit-mode TLP type that requires a specific OHC is missing it |
 
 ## Tests
 
-The crate has **156 passing tests** (plus 14 `#[ignore]` flit-mode placeholders):
+The crate has **166 passing tests** (plus 8 `#[ignore]` flit-mode placeholders):
 
 | Category | File | Passes | Ignored |
 |---|---|---|---|
 | Unit tests | `src/lib.rs` | 48 | 0 |
-| API contract tests | `tests/api_tests.rs` | 60 | 0 |
+| API contract tests | `tests/api_tests.rs` | 64 | 0 |
 | Non-flit integration tests | `tests/non_flit_tests.rs` | 16 | 0 |
-| Flit mode tests | `tests/flit_mode_tests.rs` | 26 | 14 |
+| Flit mode tests | `tests/flit_mode_tests.rs` | 32 | 8 |
 | Doc tests | `src/lib.rs` | 6 | 0 |
 
 ```bash
-cargo test                        # run all 156 non-ignored tests
+cargo test                        # run all 166 non-ignored tests
 cargo test --lib                  # unit tests only
 cargo test --test non_flit_tests  # non-flit integration tests only
-cargo test --test flit_mode_tests # flit mode Tier 0+1+2 tests
+cargo test --test flit_mode_tests # flit mode Tier 0–3 tests (Tier 4–5 ignored)
 cargo test --doc                  # doc examples only
 ```
 

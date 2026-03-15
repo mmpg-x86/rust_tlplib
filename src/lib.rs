@@ -818,6 +818,24 @@ impl FlitTlpType {
     pub fn is_read_request(&self) -> bool {
         matches!(self, FlitTlpType::MemRead32 | FlitTlpType::UioMemRead)
     }
+
+    /// Returns `true` for TLP types that carry a data payload.
+    ///
+    /// This excludes read requests, NOP, `MsgToRc`, and `LocalTlpPrefix`,
+    /// which never carry payload data regardless of the `Length` field.
+    pub fn carries_payload(&self) -> bool {
+        matches!(
+            self,
+            FlitTlpType::MemWrite32
+                | FlitTlpType::IoWrite
+                | FlitTlpType::CfgWrite0
+                | FlitTlpType::FetchAdd32
+                | FlitTlpType::CompareSwap32
+                | FlitTlpType::DeferrableMemWrite32
+                | FlitTlpType::UioMemWrite
+                | FlitTlpType::MsgDToRc
+        )
+    }
 }
 
 impl TryFrom<u8> for FlitTlpType {
@@ -869,7 +887,9 @@ pub struct FlitDW0 {
     pub ts: u8,
     /// Attributes (bits [4:2] of byte 2).
     pub attr: u8,
-    /// Payload length in DW. A value of `0` encodes 1024 DW.
+    /// Payload length in DW, as encoded on the wire. A raw value of `0`
+    /// encodes 1024 DW for data-carrying TLP types (see [`FlitTlpType::carries_payload`]).
+    /// [`FlitDW0::total_bytes`] applies this normalization automatically.
     pub length: u16,
 }
 
@@ -900,13 +920,16 @@ impl FlitDW0 {
     /// `(base_header_dw + ohc_count) × 4 + payload_bytes`
     ///
     /// Read requests carry **no** payload bytes even when `length > 0`.
+    /// For data-carrying TLP types, a wire `length` of `0` is treated as
+    /// 1024 DW per the PCIe 6.x flit-mode specification.
     pub fn total_bytes(&self) -> usize {
         let header_bytes = (self.tlp_type.base_header_dw() as usize
             + self.ohc_count() as usize) * 4;
-        let payload_bytes = if self.tlp_type.is_read_request() {
+        let payload_bytes = if !self.tlp_type.carries_payload() {
             0
         } else {
-            self.length as usize * 4
+            let dw = if self.length == 0 { 1024 } else { self.length as usize };
+            dw * 4
         };
         header_bytes + payload_bytes
     }

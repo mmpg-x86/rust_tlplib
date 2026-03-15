@@ -184,7 +184,7 @@ cargo test
 # Run only non-flit integration tests
 cargo test --test non_flit_tests
 
-# Run only flit mode tests (Tier 0 only — rest ignored)
+# Run only flit mode tests (Tier 0–3; Tier 4–5 ignored)
 cargo test --test flit_mode_tests
 
 # Run only flit mode Tier 0 stubs
