@@ -12,12 +12,13 @@ This document describes the test structure for the rtlp-lib crate.
 
 **Location:** `#[cfg(test)] mod tests` inside `src/lib.rs`
 
-**Test count: 51**
+**Test count: 52**
 
 Categories:
 - `TlpHeader` bitfield parsing (all-zeros, all-ones, bit-position verification)
-- TLP type decoding — every supported (fmt, type) pair
+- TLP type decoding — every supported (fmt, type) pair, including all 12 message routing sub-types and TLP prefix variants
 - Unsupported / invalid combination error paths
+- Invalid format values (all three reserved Fmt values: 0b101, 0b110, 0b111)
 - DMWr (Deferrable Memory Write) header decode
 - Atomic operand parsing via `new_atomic_req()`
 - Completion lower-address field decode
@@ -25,6 +26,7 @@ Categories:
 - `TlpMode::Flit` stub — returns `NotImplemented`
 - `TlpError::NotImplemented` distinctness
 - `TlpMode` derive traits (Debug, Clone, Copy, PartialEq)
+- `is_non_posted()` exhaustive coverage — all 21 `TlpType` variants
 
 **Why separate:** These tests use `TlpHeader` which is an internal implementation detail, not part of the public API.
 
@@ -34,10 +36,10 @@ Categories:
 
 **Purpose:** Functional behavior of the library through the public API using `TlpMode::NonFlit` (PCIe 1.0–5.0).
 
-**Test count: 16**
+**Test count: 25**
 
 Tests:
-- `test_tlp_packet` — basic TLP packet parsing
+- `test_tlp_packet` — structural split test (note: Config Read with extra bytes is intentional)
 - `test_complreq_trait` — completion request trait fields
 - `test_configreq_trait` — configuration request trait fields
 - `is_memreq_tag_works` — tag extraction (3DW and 4DW)
@@ -53,6 +55,15 @@ Tests:
 - `dmwr64_decode_via_tlppacket` — DMWr 4DW decode
 - `dmwr_rejects_nodata_formats` — DMWr negative test
 - `dmwr_is_non_posted` — non-posted predicate
+- `msg_req_decode_route_to_rc_3dw_no_data` — Message TLP decode (was previously broken)
+- `msg_req_data_decode_route_to_rc_3dw_with_data` — MsgReqData decode
+- `msg_req_all_six_routing_subtypes_decode` — all 6 PCIe message routing codes
+- `msg_req_data_all_six_routing_subtypes_decode` — all 6 routing codes with data
+- `msg_req_end_to_end_path_with_new_msg_req` — full packet → field extraction
+- `local_tlp_prefix_decode_type4_zero` — TLP Prefix decode (was previously broken)
+- `end_to_end_tlp_prefix_decode_type4_one` — EndToEndTlpPrefix decode
+- `tlp_prefix_local_and_end_to_end_distinguished_by_bit4` — Type[4] discrimination
+- `prefix_types_are_not_non_posted` — Prefix is_non_posted() = false
 
 **Why separate:** These verify end-to-end non-flit functionality that users rely on.  
 All calls pass `TlpMode::NonFlit` explicitly.
@@ -64,15 +75,15 @@ All calls pass `TlpMode::NonFlit` explicitly.
 **Purpose:** Ensure the public API remains stable and catch breaking changes.  
 Mode-agnostic — tests API surface only, not behavior.
 
-**Test count: 64**
+**Test count: 67**
 
 Categories:
-- `TlpError` enum — all variants including `NotImplemented`, Debug, PartialEq
+- `TlpError` enum — all variants including `NotImplemented`, `MissingMandatoryOhc`, Display, PartialEq, `std::error::Error`
 - `TlpMode` enum — NonFlit and Flit variants, Copy/Clone/Debug/PartialEq
-- `TlpMode::Flit` stub — returns `NotImplemented` for Packet and Header
+- `TlpMode::Flit` — now implemented for `TlpPacket::new()`; `TlpPacketHeader::new()` still returns `NotImplemented`
 - `TlpFmt` enum — all variants, `TryFrom<u32>` valid and invalid values
 - `TlpType` enum — all 21 variants, Debug, PartialEq
-- `TlpPacket` — constructor, getters, error conditions
+- `TlpPacket` — constructor, `get_tlp_type()`, `get_tlp_format()`, `data()` (new), `get_data()` (deprecated, backward-compat)
 - `TlpPacketHeader` — constructor, `get_tlp_type()`
 - `MemRequest` trait — 3DW and 4DW struct accessibility and method types
 - `ConfigurationRequest` trait — struct and method types
@@ -82,6 +93,7 @@ Categories:
 - Factory functions — `new_mem_req`, `new_conf_req`, `new_cmpl_req`, `new_msg_req`, `new_atomic_req`
 - API stability compilation test — all public types and functions
 - Edge cases — minimum size, empty data, payload preservation
+- `tlp_packet_data_method_exists` — verifies the new `data()` API
 
 **Why separate:** These serve as a living contract specification. A failure indicates a breaking API change.
 
@@ -91,32 +103,35 @@ Categories:
 
 **Purpose:** Test plan and byte-vector constants for PCIe 6.x flit mode TLP parsing.
 
-**Test count: 42 total (42 passing, 0 `#[ignore]`)**
+**Test count: 45 total (45 passing, 0 `#[ignore]`)**
 
-#### Tier 0 — Current stubs ✅ (5 tests — permanent regression guards)
+#### Tier 0 — Regression guards (3 tests)
 
 | Test | What it checks |
 |---|---|
-| `flit_packet_new_returns_not_implemented` | `TlpMode::Flit` → `NotImplemented` |
-| `flit_header_new_returns_not_implemented` | Same for `TlpPacketHeader` |
-| `flit_byte_vectors_have_correct_sizes` | 16 FM_* constants have correct byte lengths |
-| `flit_dw0_type_bytes_are_correct` | Byte 0 of each vector matches expected type code |
-| `flit_dw0_ohc_bytes_are_correct` | Byte 1 OHC field matches expected flags |
+| `flit_packet_new_succeeds_for_valid_flit` | `TlpMode::Flit` decodes MRd32 correctly |
+| `flit_header_new_returns_not_implemented` | `TlpPacketHeader::new(Flit)` → `NotImplemented` |
+| `flit_all_fm_vectors_parse_to_expected_type` | **Parser-driven**: every FM_* constant decodes to the expected `FlitTlpType` (catches spec errors in byte vectors) |
+| `flit_all_fm_vectors_parse_with_correct_ohc` | **Parser-driven**: every FM_* OHC bitmap decodes correctly |
 
 #### Tier 1 — DW0 field extraction ✅ (8 tests — implemented)
 Implemented: `FlitDW0::from_dw0()` in `src/lib.rs`
 
-#### Tier 2 — Per-vector header + size validation ✅ (13 tests — implemented)
-Implemented: `FlitTlpType` enum + `base_header_dw()` + `total_bytes()` in `src/lib.rs`
+#### Tier 2 — Per-vector header + size validation ✅ (15 tests — implemented)
+Implemented: `FlitTlpType` enum + `base_header_dw()` + `total_bytes()` + `has_data_payload()` in `src/lib.rs`
+
+Includes `flit_t2_total_bytes_length_zero_encodes_1024dw` — verifies PCIe spec rule that `Length=0` encodes 1024 DW.
 
 #### Tier 3 — OHC field parsing and mandatory-OHC validation ✅ (6 tests — implemented)
 Implemented: `FlitOhcA::from_bytes()` + `FlitDW0::validate_mandatory_ohc()` + `TlpError::MissingMandatoryOhc`
 
-#### Tier 4 — Packed stream walking `#[ignore]` (2 tests)
-Unlock: `FlitStreamWalker` iterator in `src/lib.rs`
+#### Tier 4 — Packed stream walking ✅ (3 tests — implemented)
+Implemented: `FlitStreamWalker` iterator in `src/lib.rs`
 
-#### Tier 5 — End-to-end `TlpMode::Flit` pipeline `#[ignore]` (6 tests)
-Unlock: `TlpPacket::new_flit()` fully wired
+#### Tier 5 — End-to-end `TlpMode::Flit` pipeline ✅ (10 tests — implemented)
+Implemented: `TlpPacket::new_flit()` + `get_flit_type()`
+
+Includes atomic operand-value verification for `FM_FETCHADD32` (operand=0x01000000) and `FM_CAS32` (compare=0x11111111, swap=0x22222222).
 
 **FM_* byte vector constants (all defined in this file):**
 
@@ -124,17 +139,17 @@ Unlock: `TlpPacket::new_flit()` fully wired
 |---|---|---|
 | `FM_NOP` | 4 | Flit NOP (type 0x00) |
 | `FM_MRD32_MIN` | 12 | MRd32, minimal, no OHC |
-| `FM_MRD32_A1_PASID` | 16 | MRd32 + OHC-A1 (PASID) |
+| `FM_MRD32_A1_PASID` | 16 | MRd32 + OHC-A1 (PASID=0x12345) |
 | `FM_MWR32_MIN` | 16 | MWr32, minimal, no OHC |
-| `FM_MWR32_PARTIAL_A1` | 20 | MWr32 + OHC-A1 (partial BE) |
-| `FM_IOWR_A2` | 20 | IOWr + mandatory OHC-A2 |
-| `FM_CFGWR0_A3` | 20 | CfgWr0 + mandatory OHC-A3 |
+| `FM_MWR32_PARTIAL_A1` | 20 | MWr32 + OHC-A1 (partial BE fdwbe=0x3) |
+| `FM_IOWR_A2` | 20 | IOWr + mandatory OHC-A2 (fdwbe=0xF) |
+| `FM_CFGWR0_A3` | 20 | CfgWr0 + mandatory OHC-A3 (fdwbe=0xF) |
 | `FM_UIOMRD64_MIN` | 16 | UIOMRd 4DW header, no OHC |
 | `FM_UIOMWR64_MIN` | 24 | UIOMWr 4DW header + 2DW payload |
 | `FM_MSG_TO_RC` | 12 | Message routed to RC, no data |
 | `FM_MSGD_TO_RC` | 16 | Message with data routed to RC |
-| `FM_FETCHADD32` | 16 | FetchAdd 32-bit atomic |
-| `FM_CAS32` | 20 | CAS 32-bit atomic |
+| `FM_FETCHADD32` | 16 | FetchAdd 32-bit atomic, operand=0x01000000 |
+| `FM_CAS32` | 20 | CAS 32-bit atomic, compare=0x11111111 swap=0x22222222 |
 | `FM_DMWR32` | 16 | DMWr 32-bit |
 | `FM_STREAM_FRAGMENT_0` | 48 | 4 back-to-back TLPs |
 | `FM_LOCAL_PREFIX_ONLY` | 4 | Local TLP Prefix token |
@@ -147,15 +162,16 @@ For design rationale see `docs/flit_mode_test_plan.md`.
 
 **Purpose:** Ensure examples in doc comments compile and run correctly.
 
-**Test count: 6**
+**Test count: 7**
 
 Tests embedded in `src/lib.rs` doc comments:
 - `TlpPacket` usage example
 - `new_mem_req` usage example
-- `new_conf_req` usage example
+- `new_conf_req` usage example (updated: 12-byte input, uses `data().to_vec()`)
 - `new_cmpl_req` usage example
 - `new_msg_req` usage example
 - `new_atomic_req` usage example
+- `FlitStreamWalker` usage example
 
 ---
 
@@ -163,12 +179,12 @@ Tests embedded in `src/lib.rs` doc comments:
 
 | Test Type | Location | Passes | Ignored | Purpose |
 |---|---|---|---|---|
-| Unit Tests | `src/lib.rs` | 51 | 0 | Internal implementation |
-| Non-Flit Integration | `tests/non_flit_tests.rs` | 16 | 0 | PCIe 1–5 functional behavior |
-| API Contract | `tests/api_tests.rs` | 64 | 0 | Public API stability |
-| Flit Mode | `tests/flit_mode_tests.rs` | 42 | 0 | PCIe 6.x -- all tiers implemented |
+| Unit Tests | `src/lib.rs` | 52 | 0 | Internal implementation |
+| Non-Flit Integration | `tests/non_flit_tests.rs` | 25 | 0 | PCIe 1–5 functional behavior |
+| API Contract | `tests/api_tests.rs` | 67 | 0 | Public API stability |
+| Flit Mode | `tests/flit_mode_tests.rs` | 45 | 0 | PCIe 6.x — all tiers implemented |
 | Doc Tests | `src/lib.rs` | 7 | 0 | Documentation examples |
-| **Total** | | **180** | **0** | |
+| **Total** | | **196** | **0** | |
 
 > All flit mode tiers (0–5) are implemented. Zero `#[ignore]` tests remain.
 
@@ -183,14 +199,8 @@ cargo test
 # Run only non-flit integration tests
 cargo test --test non_flit_tests
 
-# Run only flit mode tests (Tier 0 only — rest ignored)
+# Run only flit mode tests
 cargo test --test flit_mode_tests
-
-# Run only flit mode Tier 0 stubs
-cargo test --test flit_mode_tests flit_packet
-
-# See all pending flit mode tests (will show as 'FAILED - panicked at todo!')
-cargo test --test flit_mode_tests -- --ignored
 
 # Run only API contract tests
 cargo test --test api_tests
@@ -211,18 +221,18 @@ cargo test -- --nocapture
 
 1. **Breaking Change Detection** — `api_tests.rs` fails if the public interface changes
 2. **Mode Separation** — non-flit and flit tests are in separate files with explicit scoping
-3. **Incremental Plan** — flit mode tiers unlock as implementation lands
-4. **Documentation** — `#[ignore]` test bodies describe exactly what to implement
-5. **Always Green** — all 180 tests pass at every commit (0 ignored)
+3. **Incremental Plan** — flit mode tiers document implementation history
+4. **Parser-Driven Vector Tests** — `flit_all_fm_vectors_parse_to_expected_type` catches spec errors in FM_* constants
+5. **Always Green** — all 196 tests pass at every commit (0 ignored)
 
 ---
 
 ## Flit Mode Implementation Status (v0.5.0)
 
-All tiers complete -- no `#[ignore]` tests remain:
+All tiers complete — no `#[ignore]` tests remain:
 
 1. ~~**Tier 1** — `FlitDW0` struct + `from_dw0()`~~ ✅ Done (v0.4.1)
-2. ~~**Tier 2** — `FlitTlpType` enum + `base_header_dw()` + `total_bytes()`~~ ✅ Done (v0.4.1)
+2. ~~**Tier 2** — `FlitTlpType` enum + `base_header_dw()` + `total_bytes()` + `has_data_payload()`~~ ✅ Done (v0.5.0)
 3. ~~**Tier 3** — `FlitOhcA` + `validate_mandatory_ohc()` + `TlpError::MissingMandatoryOhc`~~ ✅ Done (v0.4.1)
 4. ~~**Tier 4** — `FlitStreamWalker` iterator~~ ✅ Done (v0.5.0)
 5. ~~**Tier 5** — `TlpPacket::new_flit()` + `get_flit_type()`~~ ✅ Done (v0.5.0)
