@@ -191,56 +191,55 @@ fn flit_header_new_returns_not_implemented() {
     );
 }
 
+/// Parser-driven check: every FM_* constant decodes to the expected FlitTlpType.
+/// Unlike asserting FM_NOP[0] == 0x00 (which only checks a constant against itself),
+/// this test actually exercises the library's type-decode path.
 #[test]
-fn flit_byte_vectors_have_correct_sizes() {
-    assert_eq!(FM_NOP.len(),                 4);
-    assert_eq!(FM_MRD32_MIN.len(),          12);
-    assert_eq!(FM_MRD32_A1_PASID.len(),     16);
-    assert_eq!(FM_MWR32_MIN.len(),          16);
-    assert_eq!(FM_MWR32_PARTIAL_A1.len(),   20);
-    assert_eq!(FM_IOWR_A2.len(),            20);
-    assert_eq!(FM_CFGWR0_A3.len(),          20);
-    assert_eq!(FM_UIOMRD64_MIN.len(),       16);
-    assert_eq!(FM_UIOMWR64_MIN.len(),       24);
-    assert_eq!(FM_MSG_TO_RC.len(),          12);
-    assert_eq!(FM_MSGD_TO_RC.len(),         16);
-    assert_eq!(FM_FETCHADD32.len(),         16);
-    assert_eq!(FM_CAS32.len(),              20);
-    assert_eq!(FM_DMWR32.len(),             16);
-    assert_eq!(FM_STREAM_FRAGMENT_0.len(),  48);
-    assert_eq!(FM_LOCAL_PREFIX_ONLY.len(),   4);
+fn flit_all_fm_vectors_parse_to_expected_type() {
+    let cases: &[(&[u8], FlitTlpType)] = &[
+        (&FM_NOP,               FlitTlpType::Nop),
+        (&FM_MRD32_MIN,         FlitTlpType::MemRead32),
+        (&FM_MRD32_A1_PASID,    FlitTlpType::MemRead32),
+        (&FM_MWR32_MIN,         FlitTlpType::MemWrite32),
+        (&FM_MWR32_PARTIAL_A1,  FlitTlpType::MemWrite32),
+        (&FM_IOWR_A2,           FlitTlpType::IoWrite),
+        (&FM_CFGWR0_A3,         FlitTlpType::CfgWrite0),
+        (&FM_UIOMRD64_MIN,      FlitTlpType::UioMemRead),
+        (&FM_UIOMWR64_MIN,      FlitTlpType::UioMemWrite),
+        (&FM_MSG_TO_RC,         FlitTlpType::MsgToRc),
+        (&FM_MSGD_TO_RC,        FlitTlpType::MsgDToRc),
+        (&FM_FETCHADD32,        FlitTlpType::FetchAdd32),
+        (&FM_CAS32,             FlitTlpType::CompareSwap32),
+        (&FM_DMWR32,            FlitTlpType::DeferrableMemWrite32),
+        (&FM_LOCAL_PREFIX_ONLY, FlitTlpType::LocalTlpPrefix),
+    ];
+    for (bytes, expected) in cases {
+        let dw0 = FlitDW0::from_dw0(bytes)
+            .unwrap_or_else(|e| panic!("FM_* failed to parse: {:?} (byte0={:#04x})", e, bytes[0]));
+        assert_eq!(dw0.tlp_type, *expected,
+            "byte0={:#04x} decoded to {:?}, expected {:?}", bytes[0], dw0.tlp_type, expected);
+    }
 }
 
+/// Parser-driven OHC check: every FM_* constant decodes the OHC presence bitmap correctly.
 #[test]
-fn flit_dw0_type_bytes_are_correct() {
-    assert_eq!(FM_NOP[0],               0x00, "FM_NOP type");
-    assert_eq!(FM_MRD32_MIN[0],         0x03, "FM_MRD32_MIN type");
-    assert_eq!(FM_MRD32_A1_PASID[0],    0x03, "FM_MRD32_A1_PASID type");
-    assert_eq!(FM_MWR32_MIN[0],         0x40, "FM_MWR32_MIN type");
-    assert_eq!(FM_MWR32_PARTIAL_A1[0],  0x40, "FM_MWR32_PARTIAL_A1 type");
-    assert_eq!(FM_IOWR_A2[0],           0x42, "FM_IOWR_A2 type");
-    assert_eq!(FM_CFGWR0_A3[0],         0x44, "FM_CFGWR0_A3 type");
-    assert_eq!(FM_UIOMRD64_MIN[0],      0x22, "FM_UIOMRD64_MIN type");
-    assert_eq!(FM_UIOMWR64_MIN[0],      0x61, "FM_UIOMWR64_MIN type");
-    assert_eq!(FM_MSG_TO_RC[0],         0x30, "FM_MSG_TO_RC type");
-    assert_eq!(FM_MSGD_TO_RC[0],        0x70, "FM_MSGD_TO_RC type");
-    assert_eq!(FM_FETCHADD32[0],        0x4C, "FM_FETCHADD32 type");
-    assert_eq!(FM_CAS32[0],             0x4E, "FM_CAS32 type");
-    assert_eq!(FM_DMWR32[0],            0x5B, "FM_DMWR32 type");
-    assert_eq!(FM_LOCAL_PREFIX_ONLY[0], 0x8D, "FM_LOCAL_PREFIX_ONLY type");
-}
-
-#[test]
-fn flit_dw0_ohc_bytes_are_correct() {
-    let ohc = |b: u8| b & 0x1F;
-
-    assert_eq!(ohc(FM_NOP[1]),              0x00, "FM_NOP ohc");
-    assert_eq!(ohc(FM_MRD32_MIN[1]),        0x00, "FM_MRD32_MIN ohc");
-    assert_eq!(ohc(FM_MWR32_MIN[1]),        0x00, "FM_MWR32_MIN ohc");
-    assert_eq!(ohc(FM_MRD32_A1_PASID[1]),   0x01, "FM_MRD32_A1_PASID ohc-A1");
-    assert_eq!(ohc(FM_MWR32_PARTIAL_A1[1]), 0x01, "FM_MWR32_PARTIAL_A1 ohc-A1");
-    assert_eq!(ohc(FM_IOWR_A2[1]),          0x01, "FM_IOWR_A2 ohc-A2");
-    assert_eq!(ohc(FM_CFGWR0_A3[1]),        0x01, "FM_CFGWR0_A3 ohc-A3");
+fn flit_all_fm_vectors_parse_with_correct_ohc() {
+    // (vector, expected OHC bitmap value)
+    let cases: &[(&[u8], u8, &str)] = &[
+        (&FM_NOP,               0, "FM_NOP"),
+        (&FM_MRD32_MIN,         0, "FM_MRD32_MIN"),
+        (&FM_MWR32_MIN,         0, "FM_MWR32_MIN"),
+        (&FM_MRD32_A1_PASID,    1, "FM_MRD32_A1_PASID"),   // OHC-A1
+        (&FM_MWR32_PARTIAL_A1,  1, "FM_MWR32_PARTIAL_A1"), // OHC-A1
+        (&FM_IOWR_A2,           1, "FM_IOWR_A2"),           // OHC-A2
+        (&FM_CFGWR0_A3,         1, "FM_CFGWR0_A3"),         // OHC-A3
+    ];
+    for (bytes, expected_ohc, name) in cases {
+        let dw0 = FlitDW0::from_dw0(bytes).unwrap();
+        assert_eq!(dw0.ohc, *expected_ohc, "{} ohc mismatch", name);
+        assert_eq!(dw0.ohc_count(), (*expected_ohc).count_ones() as u8,
+            "{} ohc_count mismatch", name);
+    }
 }
 
 // ============================================================================
