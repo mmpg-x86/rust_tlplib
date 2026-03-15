@@ -1,7 +1,6 @@
 use std::fmt::Display;
 
-#[macro_use]
-extern crate bitfield;
+use bitfield::bitfield;
 
 /// Selects the framing mode used to interpret the raw byte buffer.
 ///
