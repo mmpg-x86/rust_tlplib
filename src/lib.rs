@@ -973,6 +973,61 @@ impl FlitDW0 {
     }
 }
 
+/// Iterator over a packed stream of flit-mode TLPs.
+///
+/// Walks a byte slice containing back-to-back flit TLPs and yields
+/// `Ok((offset, FlitTlpType, total_size))` for each one.
+///
+/// Returns `Some(Err(TlpError::InvalidLength))` if a TLP extends beyond
+/// the end of the slice (truncated payload). After the first error,
+/// subsequent calls to `next()` return `None`.
+///
+/// # Examples
+///
+/// ```
+/// use rtlp_lib::{FlitStreamWalker, FlitTlpType};
+///
+/// let nop = [0x00u8, 0x00, 0x00, 0x00];
+/// let (offset, typ, size) = FlitStreamWalker::new(&nop).next().unwrap().unwrap();
+/// assert_eq!(offset, 0);
+/// assert_eq!(typ, FlitTlpType::Nop);
+/// assert_eq!(size, 4);
+/// ```
+pub struct FlitStreamWalker<'a> {
+    data: &'a [u8],
+    pos: usize,
+    errored: bool,
+}
+
+impl<'a> FlitStreamWalker<'a> {
+    /// Create a new walker over a packed flit TLP byte stream.
+    pub fn new(data: &'a [u8]) -> Self {
+        FlitStreamWalker { data, pos: 0, errored: false }
+    }
+}
+
+impl<'a> Iterator for FlitStreamWalker<'a> {
+    type Item = Result<(usize, FlitTlpType, usize), TlpError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.errored || self.pos >= self.data.len() {
+            return None;
+        }
+        let offset = self.pos;
+        let dw0 = match FlitDW0::from_dw0(&self.data[self.pos..]) {
+            Ok(d)  => d,
+            Err(e) => { self.errored = true; return Some(Err(e)); }
+        };
+        let total = dw0.total_bytes();
+        if self.pos + total > self.data.len() {
+            self.errored = true;
+            return Some(Err(TlpError::InvalidLength));
+        }
+        self.pos += total;
+        Some(Ok((offset, dw0.tlp_type, total)))
+    }
+}
+
 // ============================================================================
 // End of Flit Mode types
 // ============================================================================
@@ -1077,21 +1132,21 @@ impl TlpPacketHeader {
 /// ```
 pub struct TlpPacket {
     header: TlpPacketHeader,
+    /// Set when the packet was created from `TlpMode::Flit` bytes.
+    /// `None` for non-flit packets.
+    flit_dw0: Option<FlitDW0>,
     data: Vec<u8>,
 }
 
 impl TlpPacket {
     /// Create a new `TlpPacket` from raw bytes and the specified framing mode.
     ///
-    /// Use `TlpMode::NonFlit` for standard PCIe 1.0–5.0 TLP framing where bytes
-    /// are interpreted directly as a TLP header followed by an optional payload.
-    ///
-    /// `TlpMode::Flit` is reserved for future PCIe 6.0 flit-mode support and
-    /// currently returns `Err(TlpError::NotImplemented)`.
+    /// Use `TlpMode::NonFlit` for standard PCIe 1.0–5.0 TLP framing.
+    /// Use `TlpMode::Flit` for PCIe 6.x flit-mode TLP framing.
     pub fn new(bytes: Vec<u8>, mode: TlpMode) -> Result<TlpPacket, TlpError> {
         match mode {
             TlpMode::NonFlit => Self::new_non_flit(bytes),
-            TlpMode::Flit => Err(TlpError::NotImplemented),
+            TlpMode::Flit    => Self::new_flit(bytes),
         }
     }
 
@@ -1105,8 +1160,28 @@ impl TlpPacket {
         let data = ownbytes.drain(4..).collect();
         Ok(TlpPacket {
             header: TlpPacketHeader::new_non_flit(header)?,
+            flit_dw0: None,
             data,
         })
+    }
+
+    fn new_flit(bytes: Vec<u8>) -> Result<TlpPacket, TlpError> {
+        if bytes.len() < 4 {
+            return Err(TlpError::InvalidLength);
+        }
+        let dw0 = FlitDW0::from_dw0(&bytes)?;
+        dw0.validate_mandatory_ohc()?;
+
+        let hdr_bytes = (dw0.tlp_type.base_header_dw() as usize
+            + dw0.ohc_count() as usize) * 4;
+        if bytes.len() < hdr_bytes {
+            return Err(TlpError::InvalidLength);
+        }
+        let payload = bytes[hdr_bytes..].to_vec();
+
+        // Use a dummy non-flit header; callers should use get_flit_type() for type queries.
+        let dummy = TlpPacketHeader::new_non_flit(vec![0u8; 4])?;
+        Ok(TlpPacket { header: dummy, flit_dw0: Some(dw0), data: payload })
     }
 
     pub fn get_header(&self) -> &TlpPacketHeader {
@@ -1123,6 +1198,12 @@ impl TlpPacket {
 
     pub fn get_tlp_format(&self) -> Result<TlpFmt, TlpError> {
         TlpFmt::try_from(self.header.get_format())
+    }
+
+    /// Returns the flit-mode TLP type when the packet was created from
+    /// `TlpMode::Flit` bytes, or `None` for non-flit packets.
+    pub fn get_flit_type(&self) -> Option<FlitTlpType> {
+        self.flit_dw0.map(|d| d.tlp_type)
     }
 }
 
@@ -1276,16 +1357,50 @@ mod tests {
         assert!(matches!(TlpPacketHeader::new(vec![0x00, 0x00], TlpMode::NonFlit), Err(TlpError::InvalidLength)));
     }
 
-    // ── TlpMode: Flit returns NotImplemented ──────────────────────────────
+    // ── TlpMode: Flit ─────────────────────────────────────────────────────
 
     #[test]
-    fn packet_new_flit_returns_not_implemented() {
-        let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-        assert_eq!(TlpPacket::new(bytes, TlpMode::Flit).err().unwrap(), TlpError::NotImplemented);
+    fn packet_new_flit_succeeds_for_valid_nop() {
+        // NOP flit TLP (type 0x00, 1 DW base header, no payload)
+        let bytes = vec![0x00, 0x00, 0x00, 0x00];
+        let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
+        assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::Nop));
+        assert!(pkt.get_data().is_empty());
+    }
+
+    #[test]
+    fn packet_new_flit_mrd32_has_no_payload() {
+        // MRd32 flit (type 0x03, 3 DW base header, no payload despite Length=1)
+        let bytes = vec![0x03, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
+        assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::MemRead32));
+        assert!(pkt.get_data().is_empty()); // read request, no payload
+    }
+
+    #[test]
+    fn packet_new_flit_mwr32_has_payload() {
+        // MWr32 flit (type 0x40, 3 DW base header + 1 DW payload)
+        let bytes = vec![
+            0x40, 0x00, 0x00, 0x01, // DW0: MemWrite32, length=1
+            0x00, 0x00, 0x00, 0x00, // DW1
+            0x00, 0x00, 0x00, 0x00, // DW2
+            0xDE, 0xAD, 0xBE, 0xEF, // payload
+        ];
+        let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
+        assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::MemWrite32));
+        assert_eq!(pkt.get_data(), vec![0xDE, 0xAD, 0xBE, 0xEF]);
+    }
+
+    #[test]
+    fn packet_new_flit_nonflit_returns_none_for_flit_type() {
+        // Non-flit packets should return None from get_flit_type()
+        let pkt = TlpPacket::new(vec![0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
+        assert_eq!(pkt.get_flit_type(), None);
     }
 
     #[test]
     fn packet_header_new_flit_returns_not_implemented() {
+        // TlpPacketHeader::new() with Flit still returns NotImplemented
         let bytes = vec![0x00, 0x00, 0x00, 0x00];
         assert_eq!(TlpPacketHeader::new(bytes, TlpMode::Flit).err().unwrap(), TlpError::NotImplemented);
     }

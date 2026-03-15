@@ -11,8 +11,8 @@
 //! | 1 | ✅ passes today | `FlitDW0::from_dw0()` ← **implemented** |
 //! | 2 | ✅ passes today | `FlitTlpType::base_header_dw()` ← **implemented** |
 //! | 3 | ✅ passes today | `FlitOhcA` + `validate_mandatory_ohc()` ← **implemented** |
-//! | 4 | `#[ignore]` | `FlitStreamWalker` / stream iterator |
-//! | 5 | `#[ignore]` | `TlpPacket::new_flit()` fully wired |
+//! | 4 | ✅ passes today | `FlitStreamWalker` ← **implemented** |
+//! | 5 | ✅ passes today | `TlpPacket::new_flit()` ← **implemented** |
 //!
 //! For non-flit tests see `tests/non_flit_tests.rs`.
 //! For API surface tests see `tests/api_tests.rs`.
@@ -175,12 +175,11 @@ pub const FM_LOCAL_PREFIX_ONLY: [u8; 4] = [
 // ============================================================================
 
 #[test]
-fn flit_packet_new_returns_not_implemented() {
-    let bytes = FM_MRD32_MIN.to_vec();
-    assert_eq!(
-        TlpPacket::new(bytes, TlpMode::Flit).err().unwrap(),
-        TlpError::NotImplemented
-    );
+fn flit_packet_new_succeeds_for_valid_flit() {
+    // TlpMode::Flit is now implemented -- MRd32 flit (3 DW header, no payload)
+    let pkt = TlpPacket::new(FM_MRD32_MIN.to_vec(), TlpMode::Flit).unwrap();
+    assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::MemRead32));
+    assert!(pkt.get_data().is_empty()); // read request, no payload
 }
 
 #[test]
@@ -539,88 +538,101 @@ fn flit_t3_cfgwr_missing_mandatory_ohc_a3() {
 }
 
 // ============================================================================
-// Tier 4 — Packed stream walking
-//
-// #[ignore] — pending: FlitStreamWalker not yet implemented
+// Tier 4 -- Packed stream walking
 // ============================================================================
 
 #[test]
-#[ignore = "pending: FlitStreamWalker not yet implemented (Tier 4)"]
 fn flit_t4_stream_fragment_0_offsets() {
-    todo!(
-        "let walker = FlitStreamWalker::new(&FM_STREAM_FRAGMENT_0);
-         let entries: Vec<_> = walker.collect();
-         assert_eq!(entries[0], (0,  FlitTlpType::Nop,       4));
-         assert_eq!(entries[1], (4,  FlitTlpType::MemRead32, 12));
-         assert_eq!(entries[2], (16, FlitTlpType::MemWrite32,16));
-         assert_eq!(entries[3], (32, FlitTlpType::UioMemRead,16));
-         assert_eq!(entries.len(), 4);"
-    );
+    // FM_STREAM_FRAGMENT_0 contains 4 back-to-back TLPs:
+    //   NOP (4B) + MRd32 (12B) + MWr32 (16B) + UIOMRd (16B) = 48B total
+    let entries: Vec<_> = FlitStreamWalker::new(&FM_STREAM_FRAGMENT_0)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(entries.len(), 4);
+    assert_eq!(entries[0], (0,  FlitTlpType::Nop,       4));
+    assert_eq!(entries[1], (4,  FlitTlpType::MemRead32, 12));
+    assert_eq!(entries[2], (16, FlitTlpType::MemWrite32, 16));
+    assert_eq!(entries[3], (32, FlitTlpType::UioMemRead, 16));
 }
 
 #[test]
-#[ignore = "pending: FlitStreamWalker not yet implemented (Tier 4)"]
+fn flit_t4_stream_walker_returns_none_at_end() {
+    // Walker stops cleanly after the last TLP
+    let mut walker = FlitStreamWalker::new(&FM_NOP);
+    assert!(walker.next().is_some()); // NOP
+    assert!(walker.next().is_none()); // end of stream
+}
+
+#[test]
 fn flit_t4_stream_truncated_payload_error() {
+    // FM_UIOMWR64_MIN with last byte removed -- payload is truncated
     let mut truncated = FM_UIOMWR64_MIN.to_vec();
     truncated.pop();
-    todo!(
-        "FlitStreamWalker::new(&truncated).next() → Err(TlpError::InvalidLength)"
-    );
+    let result: Result<Vec<_>, _> = FlitStreamWalker::new(&truncated).collect();
+    assert_eq!(result.err().unwrap(), TlpError::InvalidLength);
 }
 
 // ============================================================================
-// Tier 5 — End-to-end TlpMode::Flit pipeline
-//
-// #[ignore] — pending: TlpPacket::new_flit() fully wired
+// Tier 5 -- End-to-end TlpMode::Flit pipeline
 // ============================================================================
 
 #[test]
-#[ignore = "pending: TlpMode::Flit not yet implemented (Tier 5)"]
 fn flit_t5_end_to_end_mrd32_min() {
-    todo!(
-        "TlpPacket::new(FM_MRD32_MIN.to_vec(), TlpMode::Flit).unwrap()
-         → get_data() is empty (read request, no payload)"
-    );
+    // MRd32 flit: 3 DW base header, no payload despite Length=1
+    let pkt = TlpPacket::new(FM_MRD32_MIN.to_vec(), TlpMode::Flit).unwrap();
+    assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::MemRead32));
+    assert!(pkt.get_data().is_empty());
 }
 
 #[test]
-#[ignore = "pending: TlpMode::Flit not yet implemented (Tier 5)"]
 fn flit_t5_end_to_end_mwr32_min() {
-    todo!(
-        "TlpPacket::new(FM_MWR32_MIN.to_vec(), TlpMode::Flit).unwrap()
-         → get_data() == [0xDE, 0xAD, 0xBE, 0xEF]"
-    );
+    // MWr32 flit: 3 DW header + 1 DW payload
+    let pkt = TlpPacket::new(FM_MWR32_MIN.to_vec(), TlpMode::Flit).unwrap();
+    assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::MemWrite32));
+    assert_eq!(pkt.get_data(), vec![0xDE, 0xAD, 0xBE, 0xEF]);
 }
 
 #[test]
-#[ignore = "pending: TlpMode::Flit not yet implemented (Tier 5)"]
 fn flit_t5_end_to_end_cas32() {
-    todo!(
-        "payload == [0x11,0x11,0x11,0x11, 0x22,0x22,0x22,0x22]"
-    );
+    // CAS32 flit: 3 DW header + 2 DW payload (compare + swap)
+    let pkt = TlpPacket::new(FM_CAS32.to_vec(), TlpMode::Flit).unwrap();
+    assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::CompareSwap32));
+    assert_eq!(pkt.get_data(), vec![
+        0x11, 0x11, 0x11, 0x11, // compare
+        0x22, 0x22, 0x22, 0x22, // swap
+    ]);
 }
 
 #[test]
-#[ignore = "pending: TlpMode::Flit not yet implemented (Tier 5)"]
 fn flit_t5_end_to_end_dmwr32() {
-    todo!(
-        "payload == [0xC0, 0xFF, 0xEE, 0x00]"
-    );
+    // DMWr32 flit: 3 DW header + 1 DW payload
+    let pkt = TlpPacket::new(FM_DMWR32.to_vec(), TlpMode::Flit).unwrap();
+    assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::DeferrableMemWrite32));
+    assert_eq!(pkt.get_data(), vec![0xC0, 0xFF, 0xEE, 0x00]);
 }
 
 #[test]
-#[ignore = "pending: TlpMode::Flit not yet implemented (Tier 5)"]
 fn flit_t5_end_to_end_uiomwr64() {
-    todo!(
-        "payload == [0x11,0x22,0x33,0x44, 0x55,0x66,0x77,0x88]"
-    );
+    // UIOMWr64 flit: 4 DW header + 2 DW payload
+    let pkt = TlpPacket::new(FM_UIOMWR64_MIN.to_vec(), TlpMode::Flit).unwrap();
+    assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::UioMemWrite));
+    assert_eq!(pkt.get_data(), vec![
+        0x11, 0x22, 0x33, 0x44,
+        0x55, 0x66, 0x77, 0x88,
+    ]);
 }
 
 #[test]
-#[ignore = "pending: TlpMode::Flit not yet implemented (Tier 5)"]
 fn flit_t5_nop_has_no_data() {
-    todo!(
-        "TlpPacket::new(FM_NOP.to_vec(), TlpMode::Flit).unwrap()
-         → get_data().is_empty()"
-    );
+    // NOP flit: 1 DW header, no payload
+    let pkt = TlpPacket::new(FM_NOP.to_vec(), TlpMode::Flit).unwrap();
+    assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::Nop));
+    assert!(pkt.get_data().is_empty());
+}
+
+#[test]
+fn flit_t5_nonflit_packet_get_flit_type_returns_none() {
+    // Non-flit packets must return None from get_flit_type()
+    let pkt = TlpPacket::new(vec![0x00, 0x00, 0x00, 0x01], TlpMode::NonFlit).unwrap();
+    assert_eq!(pkt.get_flit_type(), None);
 }

@@ -73,13 +73,17 @@ fn tlp_mode_implements_debug_clone_copy_partialeq() {
 }
 
 #[test]
-fn tlp_mode_flit_returns_not_implemented_for_packet() {
-    let bytes = vec![0x00u8; 8];
-    assert_eq!(TlpPacket::new(bytes, TlpMode::Flit).err().unwrap(), TlpError::NotImplemented);
+fn tlp_mode_flit_packet_new_succeeds() {
+    // TlpMode::Flit is now implemented -- NOP flit (type 0x00, 1 DW header)
+    let bytes = vec![0x00u8; 4];
+    let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
+    assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::Nop));
+    assert!(pkt.get_data().is_empty());
 }
 
 #[test]
 fn tlp_mode_flit_returns_not_implemented_for_header() {
+    // TlpPacketHeader::new() with Flit still returns NotImplemented
     let bytes = vec![0x00u8; 4];
     assert_eq!(TlpPacketHeader::new(bytes, TlpMode::Flit).err().unwrap(), TlpError::NotImplemented);
 }

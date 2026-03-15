@@ -12,7 +12,7 @@ This document describes the test structure for the rtlp-lib crate.
 
 **Location:** `#[cfg(test)] mod tests` inside `src/lib.rs`
 
-**Test count: 48**
+**Test count: 51**
 
 Categories:
 - `TlpHeader` bitfield parsing (all-zeros, all-ones, bit-position verification)
@@ -91,7 +91,7 @@ Categories:
 
 **Purpose:** Test plan and byte-vector constants for PCIe 6.x flit mode TLP parsing.
 
-**Test count: 40 total (32 passing, 8 `#[ignore]`)**
+**Test count: 42 total (42 passing, 0 `#[ignore]`)**
 
 #### Tier 0 — Current stubs ✅ (5 tests — permanent regression guards)
 
@@ -163,15 +163,14 @@ Tests embedded in `src/lib.rs` doc comments:
 
 | Test Type | Location | Passes | Ignored | Purpose |
 |---|---|---|---|---|
-| Unit Tests | `src/lib.rs` | 48 | 0 | Internal implementation |
+| Unit Tests | `src/lib.rs` | 51 | 0 | Internal implementation |
 | Non-Flit Integration | `tests/non_flit_tests.rs` | 16 | 0 | PCIe 1–5 functional behavior |
 | API Contract | `tests/api_tests.rs` | 64 | 0 | Public API stability |
-| Flit Mode | `tests/flit_mode_tests.rs` | 32 | 8 | PCIe 6.x test plan |
-| Doc Tests | `src/lib.rs` | 6 | 0 | Documentation examples |
-| **Total** | | **166** | **8** | |
+| Flit Mode | `tests/flit_mode_tests.rs` | 42 | 0 | PCIe 6.x -- all tiers implemented |
+| Doc Tests | `src/lib.rs` | 7 | 0 | Documentation examples |
+| **Total** | | **180** | **0** | |
 
-> `#[ignore]` tests compile but do not run by default.  
-> Run `cargo test -- --ignored` to see all pending flit mode tests (Tier 4–5).
+> All flit mode tiers (0–5) are implemented. Zero `#[ignore]` tests remain.
 
 ---
 
@@ -214,19 +213,18 @@ cargo test -- --nocapture
 2. **Mode Separation** — non-flit and flit tests are in separate files with explicit scoping
 3. **Incremental Plan** — flit mode tiers unlock as implementation lands
 4. **Documentation** — `#[ignore]` test bodies describe exactly what to implement
-5. **Always Green** — all 166 non-ignored tests pass at every commit
+5. **Always Green** — all 180 tests pass at every commit (0 ignored)
 
 ---
 
-## Future Work (Flit Mode Implementation)
+## Flit Mode Implementation Status (v0.5.0)
 
-To remove `#[ignore]` from flit mode tests, implement in order:
+All tiers complete -- no `#[ignore]` tests remain:
 
-1. ~~**Tier 1** — `FlitDW0` struct + `flit_dw0_from_bytes()`~~ ✅ Done (v0.4.1)
-2. ~~**Tier 2** — `FlitTlpType` enum + base header size table~~ ✅ Done (v0.4.1)
-3. ~~**Tier 3** — `FlitOhcA` struct + `validate_mandatory_ohc()` + `TlpError::MissingMandatoryOhc`~~ ✅ Done (v0.4.1)
-4. **Tier 4** — `FlitStreamWalker` iterator
-5. **Tier 5** — Wire `TlpMode::Flit` in `TlpPacket::new`
-6. Bump version to `0.5.0`
+1. ~~**Tier 1** — `FlitDW0` struct + `from_dw0()`~~ ✅ Done (v0.4.1)
+2. ~~**Tier 2** — `FlitTlpType` enum + `base_header_dw()` + `total_bytes()`~~ ✅ Done (v0.4.1)
+3. ~~**Tier 3** — `FlitOhcA` + `validate_mandatory_ohc()` + `TlpError::MissingMandatoryOhc`~~ ✅ Done (v0.4.1)
+4. ~~**Tier 4** — `FlitStreamWalker` iterator~~ ✅ Done (v0.5.0)
+5. ~~**Tier 5** — `TlpPacket::new_flit()` + `get_flit_type()`~~ ✅ Done (v0.5.0)
 
 See `docs/flit_mode_test_plan.md` for full architectural decisions and acceptance criteria.
