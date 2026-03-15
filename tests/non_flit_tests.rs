@@ -64,7 +64,7 @@ fn test_configreq_trait() {
 }
 
 #[test]
-fn is_memreq_tag_works() {
+fn memreq_tag_field_3dw_and_4dw() {
     let mr3dw1 = MemRequest3DW([0x00, 0x00, 0x20, 0x0F, 0xF6, 0x20, 0x00, 0x0C]);
     let mr3dw2 = MemRequest3DW([0x00, 0x00, 0x01, 0x0F, 0xF6, 0x20, 0x00, 0x0C]);
     let mr3dw3 = MemRequest3DW([0x00, 0x00, 0x10, 0x0F, 0xF6, 0x20, 0x00, 0x0C]);
@@ -89,7 +89,8 @@ fn is_memreq_tag_works() {
 }
 
 #[test]
-fn is_memreq_3dw_address_works() {
+fn memreq_3dw_address_field() {
+    // DW1+DW2 bytes: req_id=0x0000, tag=0x20, BE=0x0F, address32=0xF620000C
     let memreq_3dw = [0x00, 0x00, 0x20, 0x0F, 0xF6, 0x20, 0x00, 0x0C];
     let mr = MemRequest3DW(memreq_3dw);
 
@@ -97,7 +98,8 @@ fn is_memreq_3dw_address_works() {
 }
 
 #[test]
-fn is_memreq_4dw_address_works() {
+fn memreq_4dw_address_field() {
+    // DW1+DW2+DW3 bytes: address64 = 0x17FC0000000
     let memreq_4dw = [0x00, 0x00, 0x20, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00];
     let mr = MemRequest4DW(memreq_4dw);
 
@@ -105,7 +107,9 @@ fn is_memreq_4dw_address_works() {
 }
 
 #[test]
-fn is_tlppacket_creates() {
+fn tlp_packet_header_constructs_from_bytes() {
+    // MemRead32 bytes: DW0=0x00 (Fmt=000, Type=00000), TC/flags, Length=1
+    // Followed by DW1+DW2 (req_id, tag, BE, address)
     let memrd32_header = [0x00, 0x00, 0x10, 0x01, 0x00, 0x00, 0x20, 0x0F, 0xF6, 0x20, 0x00, 0x0C];
 
     let mr = TlpPacketHeader::new(memrd32_header.to_vec(), TlpMode::NonFlit).unwrap();
