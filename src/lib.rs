@@ -909,6 +909,28 @@ impl FlitTlpType {
     }
 }
 
+impl Display for FlitTlpType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            FlitTlpType::Nop                 => "NOP",
+            FlitTlpType::MemRead32           => "Memory Read (32-bit)",
+            FlitTlpType::UioMemRead          => "UIO Memory Read (64-bit)",
+            FlitTlpType::MsgToRc             => "Message routed to RC",
+            FlitTlpType::MemWrite32          => "Memory Write (32-bit)",
+            FlitTlpType::IoWrite             => "I/O Write",
+            FlitTlpType::CfgWrite0           => "Config Type 0 Write",
+            FlitTlpType::FetchAdd32          => "FetchAdd AtomicOp (32-bit)",
+            FlitTlpType::CompareSwap32       => "CompareSwap AtomicOp (32-bit)",
+            FlitTlpType::DeferrableMemWrite32=> "Deferrable Memory Write (32-bit)",
+            FlitTlpType::UioMemWrite         => "UIO Memory Write (64-bit)",
+            FlitTlpType::MsgDToRc            => "Message with Data routed to RC",
+            FlitTlpType::LocalTlpPrefix      => "Local TLP Prefix",
+            _                                => "Unknown FlitTlpType",
+        };
+        write!(f, "{name}")
+    }
+}
+
 impl TryFrom<u8> for FlitTlpType {
     type Error = TlpError;
 
