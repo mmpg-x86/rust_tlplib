@@ -841,6 +841,22 @@ impl FlitTlpType {
     pub fn is_read_request(&self) -> bool {
         matches!(self, FlitTlpType::MemRead32 | FlitTlpType::UioMemRead)
     }
+
+    /// Returns `true` for TLP types that carry a data payload in the wire packet.
+    ///
+    /// When `false`, `total_bytes()` ignores the `Length` field and contributes
+    /// zero payload bytes regardless of its value. This covers:
+    /// - Read requests (payload is in the completion, not the request)
+    /// - NOP and Local TLP Prefix (management objects with no data)
+    /// - Message-without-data variants (`MsgToRc`)
+    pub fn has_data_payload(&self) -> bool {
+        matches!(self,
+            FlitTlpType::MemWrite32 | FlitTlpType::UioMemWrite
+            | FlitTlpType::IoWrite | FlitTlpType::CfgWrite0
+            | FlitTlpType::FetchAdd32 | FlitTlpType::CompareSwap32
+            | FlitTlpType::DeferrableMemWrite32 | FlitTlpType::MsgDToRc
+        )
+    }
 }
 
 impl TryFrom<u8> for FlitTlpType {
@@ -922,14 +938,18 @@ impl FlitDW0 {
     /// Total TLP size in bytes:
     /// `(base_header_dw + ohc_count) × 4 + payload_bytes`
     ///
-    /// Read requests carry **no** payload bytes even when `length > 0`.
+    /// Per PCIe spec a `length` value of `0` encodes **1024 DW** (4096 bytes),
+    /// but only for types that actually carry a data payload (see [`FlitTlpType::has_data_payload`]).
+    /// Types that never carry payload (read requests, NOP, LocalTlpPrefix, MsgToRc)
+    /// always contribute zero payload bytes.
     pub fn total_bytes(&self) -> usize {
         let header_bytes = (self.tlp_type.base_header_dw() as usize
             + self.ohc_count() as usize) * 4;
-        let payload_bytes = if self.tlp_type.is_read_request() {
+        let payload_bytes = if !self.tlp_type.has_data_payload() {
             0
         } else {
-            self.length as usize * 4
+            let dw_count = if self.length == 0 { 1024 } else { self.length as usize };
+            dw_count * 4
         };
         header_bytes + payload_bytes
     }

@@ -336,6 +336,27 @@ fn flit_t2_nop_sizes() {
     assert_eq!(dw0.total_bytes(), 4); // 1 DW header, no payload
 }
 
+// Length=0 encodes 1024 DW per PCIe spec — not "0 DW"
+#[test]
+fn flit_t2_total_bytes_length_zero_encodes_1024dw() {
+    // MWr32 (write, so it has payload) with Length=0 → 1024 DW = 4096 bytes payload
+    // DW0: type=0x40 (MemWrite32), ohc=0, length=0
+    let dw0 = FlitDW0::from_dw0(&[0x40, 0x00, 0x00, 0x00]).unwrap();
+    assert_eq!(dw0.length, 0);
+    // 3 DW base header + 1024 DW payload = 1027 DW = 4108 bytes
+    assert_eq!(dw0.total_bytes(), 3 * 4 + 1024 * 4);
+}
+
+#[test]
+fn flit_t2_total_bytes_length_zero_read_still_no_payload() {
+    // Read requests carry no payload even with length=0 encoding (which means 1024 DW)
+    // DW0: type=0x03 (MemRead32), ohc=0, length=0
+    let dw0 = FlitDW0::from_dw0(&[0x03, 0x00, 0x00, 0x00]).unwrap();
+    assert_eq!(dw0.length, 0);
+    // 3 DW base header, no payload (read request)
+    assert_eq!(dw0.total_bytes(), 3 * 4);
+}
+
 #[test]
 fn flit_t2_mrd32_min_sizes() {
     let dw0 = FlitDW0::from_dw0(&FM_MRD32_MIN).unwrap();
