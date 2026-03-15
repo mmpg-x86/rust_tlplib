@@ -274,3 +274,114 @@ fn dmwr_is_non_posted() {
     // Normal MemWrite is posted (not non-posted)
     assert!(!TlpType::MemWriteReq.is_non_posted());
 }
+
+// ============================================================================
+// Message TLP decode (was previously broken — Type[4:3]=10 = message)
+// ============================================================================
+
+#[test]
+fn msg_req_decode_route_to_rc_3dw_no_data() {
+    // Fmt=000 (3DW no data), Type=10000 (route to RC) → byte0 = 0x10
+    let pkt = TlpPacket::new(vec![0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
+    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::MsgReq);
+}
+
+#[test]
+fn msg_req_data_decode_route_to_rc_3dw_with_data() {
+    // Fmt=010 (3DW with data), Type=10000 (route to RC) → byte0 = 0x50
+    let pkt = TlpPacket::new(vec![0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
+    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::MsgReqData);
+}
+
+#[test]
+fn msg_req_all_six_routing_subtypes_decode() {
+    // Verify all 6 message routing sub-types decode to MsgReq (no-data Fmt=000)
+    // Type[4:0]: 10000=routeRC, 10001=routeAddr, 10010=routeID,
+    //            10011=broadcast, 10100=local, 10101=gathered
+    for routing_bits in 0b10000u8..=0b10101u8 {
+        let byte0 = (0b000 << 5) | (routing_bits & 0x1f); // Fmt=000
+        let pkt = TlpPacket::new(vec![byte0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
+        assert_eq!(
+            pkt.get_tlp_type().unwrap(), TlpType::MsgReq,
+            "Routing sub-type {:#07b} should decode to MsgReq", routing_bits
+        );
+    }
+}
+
+#[test]
+fn msg_req_data_all_six_routing_subtypes_decode() {
+    // Verify all 6 routing sub-types with Fmt=010 decode to MsgReqData
+    for routing_bits in 0b10000u8..=0b10101u8 {
+        let byte0 = (0b010 << 5) | (routing_bits & 0x1f); // Fmt=010
+        let pkt = TlpPacket::new(vec![byte0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
+        assert_eq!(
+            pkt.get_tlp_type().unwrap(), TlpType::MsgReqData,
+            "Routing sub-type {:#07b} with WithData3DW should decode to MsgReqData", routing_bits
+        );
+    }
+}
+
+#[test]
+fn msg_req_end_to_end_path_with_new_msg_req() {
+    // Full end-to-end: packet decode → get_tlp_type() → new_msg_req() → field access
+    // Fmt=000, Type=10000 (route to RC) → byte0 = 0x10
+    // DW1: req_id=0xBEEF, tag=0xA5, msg_code=0x7E
+    // DW2: route word (zero)
+    let pkt_bytes = vec![
+        0x10, 0x00, 0x00, 0x00, // DW0: MsgReq route-to-RC
+        0xBE, 0xEF, 0xA5, 0x7E, // DW1: req_id=0xBEEF, tag=0xA5, msg_code=0x7E
+        0x00, 0x00, 0x00, 0x00, // DW2: route word
+    ];
+    let pkt = TlpPacket::new(pkt_bytes, TlpMode::NonFlit).unwrap();
+    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::MsgReq);
+
+    let msg = new_msg_req(pkt.data().to_vec());
+    assert_eq!(msg.req_id(),   0xBEEF);
+    assert_eq!(msg.tag(),      0xA5);
+    assert_eq!(msg.msg_code(), 0x7E);
+}
+
+// ============================================================================
+// TLP Prefix decode (was previously broken — Fmt=0b100)
+// ============================================================================
+
+#[test]
+fn local_tlp_prefix_decode_type4_zero() {
+    // Fmt=100 (TlpPrefix), Type[4]=0 → LocalTlpPrefix
+    // byte0 = (0b100 << 5) | 0b00000 = 0x80
+    let pkt = TlpPacket::new(vec![0x80, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
+    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::LocalTlpPrefix);
+}
+
+#[test]
+fn end_to_end_tlp_prefix_decode_type4_one() {
+    // Fmt=100 (TlpPrefix), Type[4]=1 → EndToEndTlpPrefix
+    // byte0 = (0b100 << 5) | 0b10000 = 0x90
+    let pkt = TlpPacket::new(vec![0x90, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
+    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::EndToEndTlpPrefix);
+}
+
+#[test]
+fn tlp_prefix_local_and_end_to_end_distinguished_by_bit4() {
+    // All Type values with bit 4=0 → LocalTlpPrefix
+    for type_bits in [0b00000u8, 0b00001, 0b00010, 0b00100, 0b01010] {
+        let byte0 = (0b100u8 << 5) | (type_bits & 0x1f);
+        let pkt = TlpPacket::new(vec![byte0, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::LocalTlpPrefix,
+            "byte0={:#04x} (Type[4]=0) should be LocalTlpPrefix", byte0);
+    }
+    // All Type values with bit 4=1 → EndToEndTlpPrefix
+    for type_bits in [0b10000u8, 0b10001, 0b10010, 0b11011] {
+        let byte0 = (0b100u8 << 5) | (type_bits & 0x1f);
+        let pkt = TlpPacket::new(vec![byte0, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::EndToEndTlpPrefix,
+            "byte0={:#04x} (Type[4]=1) should be EndToEndTlpPrefix", byte0);
+    }
+}
+
+#[test]
+fn prefix_types_are_not_non_posted() {
+    // Prefix objects are not transactions — is_non_posted() is false
+    assert!(!TlpType::LocalTlpPrefix.is_non_posted());
+    assert!(!TlpType::EndToEndTlpPrefix.is_non_posted());
+}

@@ -118,6 +118,9 @@ pub(crate) enum TlpFormatEncodingType {
     UnconSwapAtomicOpRequest= 0b01101,
     CompSwapAtomicOpRequest = 0b01110,
     DeferrableMemoryWriteRequest = 0b11011,
+    /// Message Request — covers all 6 routing sub-types (0b10000..=0b10101).
+    /// Fmt=000/001 → MsgReq, Fmt=010/011 → MsgReqData.
+    MessageRequest          = 0b10000,
 }
 
 impl TryFrom<u32> for TlpFormatEncodingType {
@@ -136,6 +139,9 @@ impl TryFrom<u32> for TlpFormatEncodingType {
             0b01101 => Ok(TlpFormatEncodingType::UnconSwapAtomicOpRequest),
             0b01110 => Ok(TlpFormatEncodingType::CompSwapAtomicOpRequest),
             0b11011 => Ok(TlpFormatEncodingType::DeferrableMemoryWriteRequest),
+            // All message routing sub-types: route-to-RC, by-addr, by-ID,
+            // broadcast, local, gathered — Type[4:3]=10, bits[2:0]=routing
+            0b10000..=0b10101 => Ok(TlpFormatEncodingType::MessageRequest),
             _       => Err(TlpError::InvalidType),
         }
     }
@@ -235,6 +241,16 @@ impl<T: AsRef<[u8]>> TlpHeader<T> {
         let tlp_type = self.get_type();
         let tlp_fmt = self.get_format();
 
+        // TLP Prefix is identified by Fmt=0b100 alone, regardless of the Type field.
+        // Type[4]=0 → Local TLP Prefix; Type[4]=1 → End-to-End TLP Prefix.
+        if let Ok(TlpFmt::TlpPrefix) = TlpFmt::try_from(tlp_fmt) {
+            return if tlp_type & 0b10000 != 0 {
+                Ok(TlpType::EndToEndTlpPrefix)
+            } else {
+                Ok(TlpType::LocalTlpPrefix)
+            };
+        }
+
         match TlpFormatEncodingType::try_from(tlp_type) {
             Ok(TlpFormatEncodingType::MemoryRequest) => {
                 match TlpFmt::try_from(tlp_fmt) {
@@ -322,6 +338,16 @@ impl<T: AsRef<[u8]>> TlpHeader<T> {
 				match TlpFmt::try_from(tlp_fmt) {
 					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::DeferrableMemWriteReq),
 					Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::DeferrableMemWriteReq),
+					Ok(_) => Err(TlpError::UnsupportedCombination),
+					Err(e) => Err(e),
+				}
+			}
+			// Message Requests: all 6 routing sub-types map here.
+			// Fmt=000/001 (no data) → MsgReq; Fmt=010/011 (with data) → MsgReqData.
+			Ok(TlpFormatEncodingType::MessageRequest) => {
+				match TlpFmt::try_from(tlp_fmt) {
+					Ok(TlpFmt::NoDataHeader3DW) | Ok(TlpFmt::NoDataHeader4DW) => Ok(TlpType::MsgReq),
+					Ok(TlpFmt::WithDataHeader3DW) | Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::MsgReqData),
 					Ok(_) => Err(TlpError::UnsupportedCombination),
 					Err(e) => Err(e),
 				}
@@ -1679,16 +1705,13 @@ mod tests {
         assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_MEM_LK).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
         assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_MEM_LK).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
 
-        // TlpPrefix fmt (0b100) is a valid format value but illegal for all
-        // request/completion type encodings — currently hits UnsupportedCombination
-        assert_eq!(dw0(FMT_PREFIX, TY_IO).get_tlp_type().unwrap_err(),   TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_PREFIX, TY_CPL).get_tlp_type().unwrap_err(),  TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_PREFIX, TY_CFG0).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        // TlpPrefix fmt (0b100): all Type values decode to a Prefix type, never UnsupportedCombination.
+        // These are tested in header_decode_prefix_and_message_types.
 
         // DMWr: NoData variants are illegal (DMWr always carries data)
         assert_eq!(dw0(FMT_3DW_NO_DATA, TY_DMWR).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
         assert_eq!(dw0(FMT_4DW_NO_DATA, TY_DMWR).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_PREFIX,      TY_DMWR).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        // Note: FMT_PREFIX with TY_DMWR now decodes to EndToEndTlpPrefix (Type[4]=1)
     }
 
     // ── DMWr: Deferrable Memory Write header decode ────────────────────────
