@@ -169,21 +169,28 @@ pub const FM_LOCAL_PREFIX_ONLY: [u8; 4] = [
 ];
 
 // ============================================================================
-// Tier 0 — Current stub behavior
+// Tier 0 — Regression guards
 //
-// These tests PASS TODAY and act as permanent regression guards.
+// These tests verify the core flit parsing entry points and two
+// parser-driven correctness checks for all FM_* byte-vector constants.
+//
+// Note: `TlpPacketHeader::new(Flit)` intentionally remains `NotImplemented` —
+// the flit header format is fundamentally different from non-flit DW0 and
+// a separate parser path has not been implemented for `TlpPacketHeader`.
 // ============================================================================
 
 #[test]
 fn flit_packet_new_succeeds_for_valid_flit() {
-    // TlpMode::Flit is now implemented -- MRd32 flit (3 DW header, no payload)
+    // TlpMode::Flit pipeline: MRd32 (3 DW base header, no payload despite Length=1)
     let pkt = TlpPacket::new(FM_MRD32_MIN.to_vec(), TlpMode::Flit).unwrap();
     assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::MemRead32));
-    assert!(pkt.data().is_empty()); // read request, no payload
+    assert!(pkt.data().is_empty()); // read request — no payload in the request packet
 }
 
 #[test]
 fn flit_header_new_returns_not_implemented() {
+    // TlpPacketHeader::new() with Flit intentionally returns NotImplemented.
+    // Flit DW0 uses a flat 8-bit type code incompatible with TlpHeader bitfield.
     let bytes = FM_MRD32_MIN.to_vec();
     assert_eq!(
         TlpPacketHeader::new(bytes, TlpMode::Flit).err().unwrap(),
