@@ -402,8 +402,13 @@ impl <T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
     }
 }
 
-/// Obtain Memory Request trait from bytes in vector as dyn
-/// This is preffered way of dealing with TLP headers as exact format (32/64 bits) is not required
+/// Obtain Memory Request trait from bytes in vector as dyn.
+/// This is the preferred way of dealing with TLP headers when the exact format
+/// (32-bit vs 64-bit) does not need to be known at the call site.
+///
+/// # Errors
+///
+/// - [`TlpError::UnsupportedCombination`] if `format` is `TlpFmt::TlpPrefix`.
 ///
 /// # Examples
 ///
@@ -706,9 +711,13 @@ fn read_operand_be(b: &[u8], off: usize, width: AtomicWidth) -> u64 {
 /// Parse an atomic TLP request from a `TlpPacket`.
 ///
 /// The TLP type and format are extracted from the packet header.
-/// Returns `Err(TlpError::UnsupportedCombination)` if the packet does not
-/// encode one of the three atomic op types, and `Err(TlpError::InvalidLength)`
-/// if the data payload has the wrong size for the expected header and operands.
+///
+/// # Errors
+///
+/// - [`TlpError::UnsupportedCombination`] if the packet does not encode one of the
+///   three atomic op types, or if the format field is not `WithData3DW`/`WithData4DW`.
+/// - [`TlpError::InvalidLength`] if the data payload size does not match
+///   the expected header + operand(s) size for the detected atomic type and width.
 ///
 /// # Examples
 ///
@@ -1058,6 +1067,11 @@ impl TlpPacketHeader {
     /// Use `TlpMode::NonFlit` for PCIe 1.0–5.0 standard TLP framing.
     /// `TlpMode::Flit` is reserved for future PCIe 6.0 support and currently
     /// returns `Err(TlpError::NotImplemented)`.
+    ///
+    /// # Errors
+    ///
+    /// - [`TlpError::InvalidLength`] if `bytes.len() < 4`.
+    /// - [`TlpError::NotImplemented`] if `mode` is `TlpMode::Flit`.
     pub fn new(bytes: Vec<u8>, mode: TlpMode) -> Result<TlpPacketHeader, TlpError> {
         match mode {
             TlpMode::NonFlit => Self::new_non_flit(bytes),
@@ -1075,10 +1089,19 @@ impl TlpPacketHeader {
         Ok(TlpPacketHeader { header: TlpHeader(dw0) })
     }
 
+    /// Decode and return the TLP type from the DW0 header fields.
+    ///
+    /// # Errors
+    ///
+    /// - [`TlpError::InvalidFormat`] if the 3-bit Fmt field is not a known value.
+    /// - [`TlpError::InvalidType`] if the 5-bit Type field is not a known value.
+    /// - [`TlpError::UnsupportedCombination`] if Fmt and Type are individually valid
+    ///   but not a legal pair (e.g. IO Request with 4DW header).
     pub fn get_tlp_type(&self) -> Result<TlpType, TlpError> {
         self.header.get_tlp_type()
     }
 
+    /// Raw 3-bit Format field from DW0 (`bits[2:0]` of byte 0 in MSB0 layout).
     pub fn get_format(&self) -> u32 {self.header.get_format()}
     pub fn get_type(&self) -> u32 {self.header.get_type()}
     pub fn get_t9(&self) -> u32 {self.header.get_t9()}
@@ -1157,6 +1180,12 @@ impl TlpPacket {
     ///
     /// Use `TlpMode::NonFlit` for standard PCIe 1.0–5.0 TLP framing.
     /// Use `TlpMode::Flit` for PCIe 6.x flit-mode TLP framing.
+    ///
+    /// # Errors
+    ///
+    /// - [`TlpError::InvalidLength`] if `bytes.len() < 4` or the flit header extends beyond `bytes`.
+    /// - [`TlpError::InvalidType`] if flit mode and the DW0 type byte is unknown.
+    /// - [`TlpError::MissingMandatoryOhc`] if flit mode and a mandatory OHC word is absent.
     pub fn new(bytes: Vec<u8>, mode: TlpMode) -> Result<TlpPacket, TlpError> {
         match mode {
             TlpMode::NonFlit => Self::new_non_flit(bytes),
@@ -1198,18 +1227,38 @@ impl TlpPacket {
         Ok(TlpPacket { header: dummy, flit_dw0: Some(dw0), data: payload })
     }
 
+    /// Returns a reference to the DW0 packet header.
+    ///
+    /// For flit-mode packets the header fields reflect the dummy all-zero
+    /// placeholder; use [`TlpPacket::get_flit_type`] instead.
     pub fn get_header(&self) -> &TlpPacketHeader {
         &self.header
     }
 
+    /// Returns the packet payload bytes (everything after the 4-byte DW0 header)
+    /// as an owned `Vec<u8>`.
+    ///
+    /// For flit-mode read requests this will be empty even when `Length > 0`.
     pub fn get_data(&self) -> Vec<u8> {
         self.data.to_vec()
     }
 
+    /// Decode and return the TLP type from the DW0 header fields.
+    ///
+    /// # Errors
+    ///
+    /// - [`TlpError::InvalidFormat`] if the 3-bit Fmt field is unknown.
+    /// - [`TlpError::InvalidType`] if the 5-bit Type field is unknown.
+    /// - [`TlpError::UnsupportedCombination`] if the Fmt/Type pair is not legal.
     pub fn get_tlp_type(&self) -> Result<TlpType, TlpError> {
         self.header.get_tlp_type()
     }
 
+    /// Decode and return the TLP format (3DW/4DW, with/without data) from DW0.
+    ///
+    /// # Errors
+    ///
+    /// - [`TlpError::InvalidFormat`] if the 3-bit Fmt field is not a known value.
     pub fn get_tlp_format(&self) -> Result<TlpFmt, TlpError> {
         TlpFmt::try_from(self.header.get_format())
     }
