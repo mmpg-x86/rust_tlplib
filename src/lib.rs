@@ -1254,21 +1254,33 @@ impl TlpPacket {
 
     /// Decode and return the TLP type from the DW0 header fields.
     ///
+    /// For flit-mode packets, use [`TlpPacket::get_flit_type`] instead.
+    ///
     /// # Errors
     ///
+    /// - [`TlpError::NotImplemented`] if this packet was created with `TlpMode::Flit`.
     /// - [`TlpError::InvalidFormat`] if the 3-bit Fmt field is unknown.
     /// - [`TlpError::InvalidType`] if the 5-bit Type field is unknown.
     /// - [`TlpError::UnsupportedCombination`] if the Fmt/Type pair is not legal.
     pub fn get_tlp_type(&self) -> Result<TlpType, TlpError> {
+        if self.flit_dw0.is_some() {
+            return Err(TlpError::NotImplemented);
+        }
         self.header.get_tlp_type()
     }
 
     /// Decode and return the TLP format (3DW/4DW, with/without data) from DW0.
     ///
+    /// For flit-mode packets, use [`TlpPacket::get_flit_type`] instead.
+    ///
     /// # Errors
     ///
+    /// - [`TlpError::NotImplemented`] if this packet was created with `TlpMode::Flit`.
     /// - [`TlpError::InvalidFormat`] if the 3-bit Fmt field is not a known value.
     pub fn get_tlp_format(&self) -> Result<TlpFmt, TlpError> {
+        if self.flit_dw0.is_some() {
+            return Err(TlpError::NotImplemented);
+        }
         TlpFmt::try_from(self.header.get_format())
     }
 
