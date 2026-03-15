@@ -34,6 +34,35 @@ fn error_type_implements_partialeq() {
 }
 
 #[test]
+fn error_type_implements_display() {
+    // Verify all variants produce non-empty human-readable messages
+    let variants = [
+        TlpError::InvalidFormat,
+        TlpError::InvalidType,
+        TlpError::UnsupportedCombination,
+        TlpError::InvalidLength,
+        TlpError::NotImplemented,
+        TlpError::MissingMandatoryOhc,
+    ];
+    for e in &variants {
+        let s = format!("{e}");
+        assert!(!s.is_empty(), "Display for {e:?} must not be empty");
+    }
+}
+
+#[test]
+fn error_type_implements_std_error() {
+    // TlpError must be usable as Box<dyn std::error::Error>
+    fn returns_box_error() -> Result<(), Box<dyn std::error::Error>> {
+        let _ = TlpPacket::new(vec![], TlpMode::NonFlit)?;
+        Ok(())
+    }
+    let err = returns_box_error().unwrap_err();
+    // The Display message should be meaningful
+    assert!(!err.to_string().is_empty());
+}
+
+#[test]
 fn error_not_implemented_exists_and_is_distinct() {
     let e = TlpError::NotImplemented;
     assert_eq!(e, TlpError::NotImplemented);

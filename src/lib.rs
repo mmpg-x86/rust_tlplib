@@ -37,6 +37,21 @@ pub enum TlpError {
     MissingMandatoryOhc,
 }
 
+impl fmt::Display for TlpError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TlpError::InvalidFormat => write!(f, "invalid TLP format field"),
+            TlpError::InvalidType => write!(f, "invalid TLP type field"),
+            TlpError::UnsupportedCombination => write!(f, "unsupported format/type combination"),
+            TlpError::InvalidLength => write!(f, "byte slice too short for expected TLP fields"),
+            TlpError::NotImplemented => write!(f, "feature not yet implemented"),
+            TlpError::MissingMandatoryOhc => write!(f, "mandatory OHC word missing for this TLP type"),
+        }
+    }
+}
+
+impl std::error::Error for TlpError {}
+
 #[repr(u8)]
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum TlpFmt {
