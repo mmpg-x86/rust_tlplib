@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{self, Display};
 
 use bitfield::bitfield;
 
@@ -48,15 +48,15 @@ pub enum TlpFmt {
 }
 
 impl Display for TlpFmt {
-    fn fmt (&self, fmt: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
-        let name = match &self {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
             TlpFmt::NoDataHeader3DW => "3DW no Data Header",
             TlpFmt::NoDataHeader4DW => "4DW no Data Header",
             TlpFmt::WithDataHeader3DW => "3DW with Data Header",
             TlpFmt::WithDataHeader4DW => "4DW with Data Header",
             TlpFmt::TlpPrefix => "Tlp Prefix",
         };
-        write!(fmt, "{}", name)
+        write!(f, "{name}")
     }
 }
 
@@ -153,8 +153,8 @@ pub enum TlpType {
 }
 
 impl Display for TlpType {
-    fn fmt (&self, fmt: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
-        let name = match &self {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
             TlpType::MemReadReq => "Memory Read Request",
             TlpType::MemReadLockReq => "Locked Memory Read Request",
             TlpType::MemWriteReq => "Memory Write Request",
@@ -177,7 +177,7 @@ impl Display for TlpType {
             TlpType::LocalTlpPrefix => "Local Tlp Prefix",
             TlpType::EndToEndTlpPrefix => "End To End Tlp Prefix",
         };
-        write!(fmt, "{}", name)
+        write!(f, "{name}")
     }
 }
 
