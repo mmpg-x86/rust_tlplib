@@ -291,3 +291,4 @@ A flit mode implementation is considered complete when:
 - [ ] `cargo test` shows 0 ignored tests in `flit_mode_tests.rs`
 - [ ] `TESTS.md` updated with final counts
 - [ ] Version bumped to `0.5.0`
+

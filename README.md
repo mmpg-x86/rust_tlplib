@@ -58,7 +58,8 @@ match packet.mode() {
             TlpType::MemReadLockReq |
             TlpType::DeferrableMemWriteReq |
             TlpType::IOReadReq | TlpType::IOWriteReq => {
-                // data() returns &[u8] — no allocation, passes directly to new_mem_req
+                // data() returns &[u8] — no extra allocation at this call site;
+                // new_mem_req takes impl Into<Vec<u8>> and may allocate internally.
                 let mr = new_mem_req(packet.data(), &tlp_format).unwrap();
                 println!("req_id=0x{:04X}  tag=0x{:02X}  addr=0x{:X}",
                          mr.req_id(), mr.tag(), mr.address());

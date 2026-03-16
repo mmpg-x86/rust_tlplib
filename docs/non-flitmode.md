@@ -1,7 +1,7 @@
 # API Proposal: Non-Flit Mode / Flit Mode Split
 
 **Status:** Draft — for review and discussion
-**Target release:** 0.4.0 or 0.5.0 (see [Decision Points](#decision-points))
+**Original target release:** 0.4.0 or 0.5.0 (see [Decision Points](#decision-points))
 
 ---
 
@@ -205,3 +205,4 @@ design discussion.
 2. Is flit container parsing in scope for this library at all, or out of scope
    by design?
 3. Are there PCIe 6.0 traces available to validate flit parsing against?
+

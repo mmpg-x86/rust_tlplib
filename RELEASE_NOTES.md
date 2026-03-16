@@ -65,7 +65,7 @@ The old names still compile — update at your own pace.
 // Before — required .to_vec()
 let cr = new_conf_req(pkt.get_data());
 
-// After — zero extra allocation
+// After — no explicit .to_vec() needed (allocation happens inside new_conf_req)
 let cr = new_conf_req(pkt.data());
 ```
 

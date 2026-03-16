@@ -244,3 +244,4 @@ All tiers complete — no `#[ignore]` tests remain:
 5. ~~**Tier 5** — `TlpPacket::new_flit()` + `flit_type()`~~ ✅ Done (v0.5.0)
 
 See `docs/flit_mode_test_plan.md` for full architectural decisions and acceptance criteria.
+

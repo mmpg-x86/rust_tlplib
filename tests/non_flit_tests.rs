@@ -35,7 +35,7 @@ fn test_tlp_packet() {
     let tlp = TlpPacket::new(d, TlpMode::NonFlit).unwrap();
 
     assert_eq!(tlp.tlp_type().unwrap(), TlpType::ConfType0ReadReq);
-    // DW0 consumed as header; bytes[4..11] go into data() for downstream parsing
+    // DW0 consumed as header; bytes[4..12] go into data() for downstream parsing
     assert_eq!(tlp.data(), [0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10]);
 }
 
@@ -388,7 +388,7 @@ fn msg_req_end_to_end_path_with_new_msg_req() {
     let pkt = TlpPacket::new(pkt_bytes, TlpMode::NonFlit).unwrap();
     assert_eq!(pkt.tlp_type().unwrap(), TlpType::MsgReq);
 
-    let msg = new_msg_req(pkt.data().to_vec());
+    let msg = new_msg_req(pkt.data());
     assert_eq!(msg.req_id(), 0xBEEF);
     assert_eq!(msg.tag(), 0xA5);
     assert_eq!(msg.msg_code(), 0x7E);
