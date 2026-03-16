@@ -400,9 +400,9 @@ let pkt = TlpPacket::new(vec![
     0x5B, 0x00, 0x00, 0x00,
     0xAB, 0xCD, 0x42, 0x0F,
     0xDE, 0xAD, 0x00, 0x00,
-]);
+]).unwrap();
 assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
-let mr = new_mem_req(pkt.get_data(), &pkt.get_tlp_format().unwrap());
+let mr = new_mem_req(pkt.get_data(), &pkt.get_tlp_format().unwrap()).unwrap();
 assert_eq!(mr.req_id(),  0xABCD);
 assert_eq!(mr.tag(),     0x42);
 assert_eq!(mr.address(), 0xDEAD_0000);
@@ -423,9 +423,9 @@ let pkt = TlpPacket::new(vec![
     0xBE, 0xEF, 0xA5, 0x00,
     0x11, 0x22, 0x33, 0x44,
     0x55, 0x66, 0x77, 0x88,
-]);
+]).unwrap();
 assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
-let mr = new_mem_req(pkt.get_data(), &pkt.get_tlp_format().unwrap());
+let mr = new_mem_req(pkt.get_data(), &pkt.get_tlp_format().unwrap()).unwrap();
 assert_eq!(mr.address(), 0x1122_3344_5566_7788);
 ```
 
