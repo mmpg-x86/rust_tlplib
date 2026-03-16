@@ -134,7 +134,7 @@ fn tlp_packet_header_constructs_from_bytes() {
 
 #[test]
 fn test_tlp_packet_invalid_type() {
-    // Test that TlpPacket::get_tlp_type properly returns error
+    // Test that TlpPacket::tlp_type properly returns error
     let invalid_data = vec![0x0f, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
     let packet = TlpPacket::new(invalid_data, TlpMode::NonFlit).unwrap();
     let result = packet.tlp_type();

@@ -562,7 +562,7 @@ fn atomic_req_returns_err_for_non_atomic_type() {
 #[test]
 fn atomic_req_returns_err_for_nodata_format() {
     // Swap type with NoData3DW fmt: fmt=0b000, type=0b01101 → byte0 = 0x0D
-    // get_tlp_type() returns UnsupportedCombination for this combo
+    // tlp_type() returns UnsupportedCombination for this combo
     let mut bytes = vec![0x0D, 0x00, 0x00, 0x00];
     bytes.extend_from_slice(&[0u8; 16]);
     let pkt = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();

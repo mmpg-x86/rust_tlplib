@@ -9,16 +9,9 @@ use rtlp_lib::*;
 fuzz_target!(|data: &[u8]| {
     // ── Non-flit path ──────────────────────────────────────────────────────
     if let Ok(pkt) = TlpPacket::new(data.to_vec(), TlpMode::NonFlit) {
-        let tlp_type = match pkt.tlp_type() {
-            Ok(t) => t,
-            Err(_) => return,
-        };
-
-        let fmt = match pkt.tlp_format() {
-            Ok(f) => f,
-            Err(_) => return,
-        };
-
+        // Use if-let so that parse errors skip non-flit decode without
+        // returning early — execution always reaches the flit path below.
+        if let (Ok(tlp_type), Ok(fmt)) = (pkt.tlp_type(), pkt.tlp_format()) {
         // Display and predicate methods must not panic
         let _ = format!("{}", tlp_type);
         let _ = tlp_type.is_non_posted();
@@ -92,6 +85,7 @@ fuzz_target!(|data: &[u8]| {
             }
             _ => {}
         }
+        } // end if let (Ok(tlp_type), Ok(fmt))
     }
 
     // ── Flit path (PCIe 6.x) ───────────────────────────────────────────────
