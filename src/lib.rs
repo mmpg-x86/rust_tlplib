@@ -421,15 +421,23 @@ impl<T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
 /// }
 ///
 ///
-/// # let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+/// # let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
 /// # decode(bytes).unwrap();
 /// ```
 pub fn new_mem_req(bytes: Vec<u8>, format: &TlpFmt) -> Result<Box<dyn MemRequest>, TlpError> {
     match format {
-        TlpFmt::NoDataHeader3DW => Ok(Box::new(MemRequest3DW(bytes))),
-        TlpFmt::NoDataHeader4DW => Ok(Box::new(MemRequest4DW(bytes))),
-        TlpFmt::WithDataHeader3DW => Ok(Box::new(MemRequest3DW(bytes))),
-        TlpFmt::WithDataHeader4DW => Ok(Box::new(MemRequest4DW(bytes))),
+        TlpFmt::NoDataHeader3DW | TlpFmt::WithDataHeader3DW => {
+            if bytes.len() < 8 {
+                return Err(TlpError::InvalidLength);
+            }
+            Ok(Box::new(MemRequest3DW(bytes)))
+        }
+        TlpFmt::NoDataHeader4DW | TlpFmt::WithDataHeader4DW => {
+            if bytes.len() < 12 {
+                return Err(TlpError::InvalidLength);
+            }
+            Ok(Box::new(MemRequest4DW(bytes)))
+        }
         TlpFmt::TlpPrefix => Err(TlpError::UnsupportedCombination),
     }
 }
@@ -459,7 +467,7 @@ pub trait ConfigurationRequest {
 /// use rtlp_lib::ConfigurationRequest;
 /// use rtlp_lib::new_conf_req;
 ///
-/// let bytes = vec![0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+/// let bytes = vec![0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
 /// let tlp = TlpPacket::new(bytes).unwrap();
 ///
 /// if let Ok(tlpfmt) = tlp.get_tlp_format() {
@@ -480,7 +488,12 @@ pub fn new_conf_req(
     format: &TlpFmt,
 ) -> Result<Box<dyn ConfigurationRequest>, TlpError> {
     match format {
-        TlpFmt::NoDataHeader3DW | TlpFmt::WithDataHeader3DW => Ok(Box::new(ConfigRequest(bytes))),
+        TlpFmt::NoDataHeader3DW | TlpFmt::WithDataHeader3DW => {
+            if bytes.len() < 8 {
+                return Err(TlpError::InvalidLength);
+            }
+            Ok(Box::new(ConfigRequest(bytes)))
+        }
         _ => Err(TlpError::UnsupportedCombination),
     }
 }
@@ -600,6 +613,9 @@ pub fn new_cmpl_req(
 ) -> Result<Box<dyn CompletionRequest>, TlpError> {
     match format {
         TlpFmt::NoDataHeader3DW | TlpFmt::WithDataHeader3DW => {
+            if bytes.len() < 8 {
+                return Err(TlpError::InvalidLength);
+            }
             Ok(Box::new(CompletionReqDW23(bytes)))
         }
         _ => Err(TlpError::UnsupportedCombination),
@@ -655,7 +671,7 @@ impl<T: AsRef<[u8]>> MessageRequest for MessageReqDW24<T> {
 /// use rtlp_lib::MessageRequest;
 /// use rtlp_lib::new_msg_req;
 ///
-/// let bytes = vec![0x20, 0x01, 0xFF, 0xC2, 0x00, 0x00, 0x00, 0x00];
+/// let bytes = vec![0x20, 0x01, 0xFF, 0xC2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
 /// let tlpfmt = TlpFmt::NoDataHeader3DW;
 ///
 /// let msg_req: Box<dyn MessageRequest> = new_msg_req(bytes, &tlpfmt).unwrap();
@@ -667,7 +683,12 @@ pub fn new_msg_req(bytes: Vec<u8>, format: &TlpFmt) -> Result<Box<dyn MessageReq
         TlpFmt::NoDataHeader3DW
         | TlpFmt::NoDataHeader4DW
         | TlpFmt::WithDataHeader3DW
-        | TlpFmt::WithDataHeader4DW => Ok(Box::new(MessageReqDW24(bytes))),
+        | TlpFmt::WithDataHeader4DW => {
+            if bytes.len() < 12 {
+                return Err(TlpError::InvalidLength);
+            }
+            Ok(Box::new(MessageReqDW24(bytes)))
+        }
         TlpFmt::TlpPrefix => Err(TlpError::UnsupportedCombination),
     }
 }
