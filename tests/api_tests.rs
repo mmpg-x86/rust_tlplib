@@ -218,7 +218,7 @@ fn tlp_packet_new_constructor_exists() {
 }
 
 #[test]
-fn tlp_packet_get_tlp_type_returns_result() {
+fn tlp_packet_tlp_type_returns_result() {
     let data = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
     let packet = TlpPacket::new(data, TlpMode::NonFlit).unwrap();
     let result: Result<TlpType, TlpError> = packet.tlp_type();
@@ -226,28 +226,28 @@ fn tlp_packet_get_tlp_type_returns_result() {
 }
 
 #[test]
-fn tlp_packet_get_tlp_type_valid_mem_read() {
+fn tlp_packet_tlp_type_valid_mem_read() {
     let data = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
     let packet = TlpPacket::new(data, TlpMode::NonFlit).unwrap();
     assert_eq!(packet.tlp_type().unwrap(), TlpType::MemReadReq);
 }
 
 #[test]
-fn tlp_packet_get_tlp_type_valid_mem_write() {
+fn tlp_packet_tlp_type_valid_mem_write() {
     let data = vec![0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
     let packet = TlpPacket::new(data, TlpMode::NonFlit).unwrap();
     assert_eq!(packet.tlp_type().unwrap(), TlpType::MemWriteReq);
 }
 
 #[test]
-fn tlp_packet_get_tlp_type_valid_config_type0_read() {
+fn tlp_packet_tlp_type_valid_config_type0_read() {
     let data = vec![0x04, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
     let packet = TlpPacket::new(data, TlpMode::NonFlit).unwrap();
     assert_eq!(packet.tlp_type().unwrap(), TlpType::ConfType0ReadReq);
 }
 
 #[test]
-fn tlp_packet_get_tlp_type_error_invalid_format() {
+fn tlp_packet_tlp_type_error_invalid_format() {
     let data = vec![0xa0, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
     let packet = TlpPacket::new(data, TlpMode::NonFlit).unwrap();
     let result = packet.tlp_type();
@@ -256,7 +256,7 @@ fn tlp_packet_get_tlp_type_error_invalid_format() {
 }
 
 #[test]
-fn tlp_packet_get_tlp_type_error_invalid_type() {
+fn tlp_packet_tlp_type_error_invalid_type() {
     let data = vec![0x0f, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
     let packet = TlpPacket::new(data, TlpMode::NonFlit).unwrap();
     let result = packet.tlp_type();
@@ -265,7 +265,7 @@ fn tlp_packet_get_tlp_type_error_invalid_type() {
 }
 
 #[test]
-fn tlp_packet_get_tlp_format_exists() {
+fn tlp_packet_tlp_format_exists() {
     let data = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
     let packet = TlpPacket::new(data, TlpMode::NonFlit).unwrap();
     let format: Result<TlpFmt, _> = packet.tlp_format();
@@ -303,7 +303,7 @@ fn tlp_packet_header_new_constructor_exists() {
 }
 
 #[test]
-fn tlp_packet_header_get_tlp_type_returns_result() {
+fn tlp_packet_header_tlp_type_returns_result() {
     let data = vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
     let header = TlpPacketHeader::new(data, TlpMode::NonFlit).unwrap();
     let result: Result<TlpType, TlpError> = header.tlp_type();

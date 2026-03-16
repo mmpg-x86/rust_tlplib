@@ -5,7 +5,7 @@ All notable changes to `rtlp_lib` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] - Unreleased
+## [0.5.0] - 2026-03-16
 
 ### Added
 
@@ -71,3 +71,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (bit 6 was previously masked out).
 - `MessageReqDW24::dw3()` and `dw4()` now preserve all 32 bits (upper 16 bits were previously
   truncated due to a `u16` return type in the underlying bitfield).
+
