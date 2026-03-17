@@ -886,4 +886,3 @@ fn tlp_packet_header_implements_debug() {
     assert!(s.contains("format"), "expected 'format' in: {s}");
     assert!(s.contains("length"), "expected 'length' in: {s}");
 }
-
