@@ -8,7 +8,7 @@ Byte-level examples and test inventory for both PCIe framing modes.
 
 1. [DW0 Layout — Non-Flit vs Flit](#1-dw0-layout--non-flit-vs-flit)
 2. [Non-Flit TLP Examples (PCIe 1.0–5.0)](#2-non-flit-tlp-examples-pcie-10-50)
-3. [Flit-Mode TLP Examples (PCIe 6.x)](#3-flit-mode-tlp-examples-pcie-6x)
+3. [Flit-Mode TLP Examples (PCIe 6.0 Base Spec)](#3-flit-mode-tlp-examples-pcie-6x)
 4. [Test Inventory](#4-test-inventory)
 
 ---
@@ -32,7 +32,7 @@ Byte 3  │ Length[7:0]                     │
 | `0b011` | 4 DW header + payload |
 | `0b100` | TLP Prefix |
 
-### Flit Mode (PCIe 6.x)
+### Flit Mode (PCIe 6.0 Base Spec)
 
 ```text
 Byte 0  │ Type[7:0]                       │  ← flat 8-bit type code
@@ -225,7 +225,7 @@ assert_eq!(ar.operand0(), 4);
 
 ---
 
-## 3. Flit-Mode TLP Examples (PCIe 6.x)
+## 3. Flit-Mode TLP Examples (PCIe 6.0 Base Spec)
 
 ### Quick Reference
 
@@ -579,4 +579,5 @@ Doc examples embedded in public API comments — verified by `cargo test --doc`.
 | `new_msg_req` | MessageRequest trait usage |
 | `new_atomic_req` | Full atomic operand parsing |
 | `FlitStreamWalker` | Stream walking with NOP vector |
+
 

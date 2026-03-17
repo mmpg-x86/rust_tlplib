@@ -1,6 +1,6 @@
-//! Flit Mode Tests (PCIe 6.x)
+//! Flit Mode Tests (PCIe 6.0 Base Spec)
 //!
-//! Scope: parser tests for TLP byte streams as they appear inside a PCIe 6.x FLIT.
+//! Scope: parser tests for TLP byte streams as they appear inside a PCIe flit container (PCIe 6.0 Base Spec).
 //! These are NOT full 256-byte FLIT containers — no DLP, CRC or FEC bytes.
 //!
 //! For non-flit tests see `tests/non_flit_tests.rs`.

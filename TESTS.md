@@ -105,7 +105,7 @@ Categories:
 
 ### 4. Flit Mode Tests (`tests/flit_mode_tests.rs`)
 
-**Purpose:** Test plan and byte-vector constants for PCIe 6.x flit mode TLP parsing.
+**Purpose:** Test plan and byte-vector constants for PCIe flit mode (PCIe 6.0 Base Spec) TLP parsing.
 
 **Test count: 45 total (45 passing, 0 `#[ignore]`)**
 
@@ -217,6 +217,7 @@ cargo test -- --nocapture
 ---
 
 See `docs/tlp_reference.md` for byte-level TLP examples and the complete test inventory for both framing modes.
+
 
 
 

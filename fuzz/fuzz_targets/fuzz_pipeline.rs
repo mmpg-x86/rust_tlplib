@@ -91,7 +91,7 @@ fuzz_target!(|data: &[u8]| {
         }
     }
 
-    // ── Flit path (PCIe 6.x) ───────────────────────────────────────────────
+    // ── Flit path (PCIe 6.0 Base Spec flit framing) ───────────────────────────────────────────────
     if let Ok(pkt) = TlpPacket::new(data.to_vec(), TlpMode::Flit) {
         // mode() dispatch
         let _ = pkt.mode();

@@ -138,7 +138,7 @@ assert!(!TlpType::MemWriteReq.is_non_posted());   // posted
 | `TlpType` | 21-variant enum covering all decoded non-flit TLP types |
 | `TlpError` | `InvalidFormat`, `InvalidType`, `UnsupportedCombination`, `InvalidLength`, `NotImplemented`, `MissingMandatoryOhc` |
 
-### Flit Mode Types (PCIe 6.x)
+### Flit Mode Types (PCIe 6.0 Base Spec)
 
 | Type | Description |
 |---|---|
@@ -227,7 +227,7 @@ See [TESTS.md](TESTS.md) for the full test structure and flit mode tier descript
 - **[TESTS.md](TESTS.md)** — test structure, tier descriptions, FM_* byte-vector
   constants reference, and running individual test suites.
 - **[docs/tlp_reference.md](docs/tlp_reference.md)** — byte-level TLP examples for both
-  non-flit (PCIe 1–5) and flit mode (PCIe 6.x), DW0 layout diagrams, and test inventory.
+  non-flit (PCIe 1–5) and flit mode (PCIe 6.0 Base Spec), DW0 layout diagrams, and test inventory.
 - **[tlp.md](tlp.md)** — supplementary PCIe TLP encoding reference.
 - **[docs.rs](https://docs.rs/rtlp-lib)** — published rustdoc for the released version.
 - `cargo doc --open` — rustdoc for the current local build.
@@ -235,5 +235,6 @@ See [TESTS.md](TESTS.md) for the full test structure and flit mode tier descript
 ## License
 
 Licensed under the 3-Clause BSD License — see [LICENSE](LICENSE).
+
 
 

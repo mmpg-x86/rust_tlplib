@@ -20,7 +20,7 @@ pub enum TlpMode {
     /// Bytes are interpreted directly as a TLP header followed by optional payload.
     NonFlit,
 
-    /// Flit-mode TLP framing (PCIe 6.0+).
+    /// Flit-mode TLP framing (introduced in PCIe 6.0 Base Spec; can operate at any link speed when both endpoints support flit mode).
     /// Supported by `TlpPacket::new` and `TlpPacket::flit_type()`.
     /// `TlpPacketHeader::new` with this mode returns `Err(TlpError::NotImplemented)`.
     Flit,
@@ -1001,7 +1001,7 @@ pub fn new_atomic_req(pkt: &TlpPacket) -> Result<Box<dyn AtomicRequest>, TlpErro
 }
 
 // ============================================================================
-// Flit Mode types (PCIe 6.x)
+// Flit Mode types (introduced in PCIe 6.0 Base Spec)
 // ============================================================================
 
 /// TLP type codes used in Flit Mode DW0 byte 0.
@@ -1372,7 +1372,7 @@ impl TlpPacketHeader {
     /// Create a new `TlpPacketHeader` from raw bytes and the specified framing mode.
     ///
     /// Use `TlpMode::NonFlit` for PCIe 1.0–5.0 standard TLP framing.
-    /// `TlpMode::Flit` is reserved for future PCIe 6.0 support and currently
+    /// `TlpMode::Flit` is the flit TLP framing mode (introduced in PCIe 6.0 Base Spec). Currently
     /// returns `Err(TlpError::NotImplemented)`.
     ///
     /// # Errors
@@ -1535,7 +1535,7 @@ impl TlpPacket {
     /// Create a new `TlpPacket` from raw bytes and the specified framing mode.
     ///
     /// Use `TlpMode::NonFlit` for standard PCIe 1.0–5.0 TLP framing.
-    /// Use `TlpMode::Flit` for PCIe 6.x flit-mode TLP framing.
+    /// Use `TlpMode::Flit` for flit-mode TLP framing (introduced in PCIe 6.0 Base Spec).
     ///
     /// # Errors
     ///

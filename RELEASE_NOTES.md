@@ -2,10 +2,10 @@
 
 ## What's New
 
-### PCIe 6.0+ Flit Mode Support
+### Flit Mode Support (PCIe 6.0 Base Spec)
 
 `TlpMode::Flit` is now fully implemented in `TlpPacket::new`. Pass raw bytes from
-a PCIe 6.x FLIT container and get back a fully parsed `TlpPacket` with the payload
+a flit container (PCIe 6.0 Base Spec) and get back a fully parsed `TlpPacket` with the payload
 separated from the header.
 
 New flit-mode types and parsers:
@@ -19,7 +19,7 @@ New flit-mode types and parsers:
 | `TlpError::MissingMandatoryOhc` | IoWrite / CfgWrite0 without required OHC-A |
 
 ```rust
-// Parse a PCIe 6.x flit TLP
+// Parse a flit-mode TLP
 let pkt = TlpPacket::new(bytes, TlpMode::Flit)?;
 let flit_type = pkt.flit_type(); // Some(FlitTlpType::MemWrite32)
 
@@ -115,7 +115,7 @@ additions will not be breaking changes.
 | Atomic | FetchAdd, Swap, CompareSwap (W32 + W64) |
 | Special | DeferrableMemWrite, LocalTlpPrefix, EndToEndTlpPrefix |
 
-### Flit Mode (PCIe 6.0+)
+### Flit Mode (PCIe 6.0 Base Spec)
 
 | Type | Notes |
 |---|---|
@@ -170,3 +170,4 @@ match flit_pkt.mode() {
 ---
 
 *Full change log: [CHANGELOG.md](CHANGELOG.md)*
+

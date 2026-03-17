@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Flit-mode (PCIe 6.0+) support** via `TlpMode::Flit` in `TlpPacket::new`.
+- **Flit-mode (PCIe 6.0 Base Spec) support** via `TlpMode::Flit` in `TlpPacket::new`.
   - `FlitTlpType` enum — 13 flit-mode TLP type codes decoded from DW0 byte 0.
   - `FlitDW0` struct — parsed flit-mode DW0 with `from_dw0()`, `ohc_count()`, `total_bytes()`.
   - `FlitOhcA` struct — parsed OHC-A extension word with `from_bytes()`.
@@ -71,4 +71,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (bit 6 was previously masked out).
 - `MessageReqDW24::dw3()` and `dw4()` now preserve all 32 bits (upper 16 bits were previously
   truncated due to a `u16` return type in the underlying bitfield).
+
 

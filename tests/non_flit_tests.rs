@@ -4,7 +4,7 @@
 //! Every `TlpPacket::new` and `TlpPacketHeader::new` call in this file must
 //! pass `TlpMode::NonFlit` explicitly.
 //!
-//! For flit mode (PCIe 6.x) tests see `tests/flit_mode_tests.rs`.
+//! For flit mode (PCIe 6.0 Base Spec) tests see `tests/flit_mode_tests.rs`.
 //! For API surface / stability tests see `tests/api_tests.rs`.
 
 use rtlp_lib::*;

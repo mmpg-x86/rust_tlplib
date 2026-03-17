@@ -12,7 +12,7 @@ how to extend or test code that uses the library.
 2. [Parsing a Non-Flit TLP (PCIe 1.0–5.0)](#2-parsing-a-non-flit-tlp-pcie-10-50)
 3. [Mode Dispatch — Handling Both Modes in the Same Code Path](#3-mode-dispatch--handling-both-modes-in-the-same-code-path)
 4. [Non-Flit TLP Types — per-type field extraction](#4-non-flit-tlp-types--per-type-field-extraction)
-5. [Parsing a Flit-Mode TLP (PCIe 6.x)](#5-parsing-a-flit-mode-tlp-pcie-6x)
+5. [Parsing a Flit-Mode TLP (PCIe 6.0 Base Spec)](#5-parsing-a-flit-mode-tlp-pcie-6x)
 6. [Flit Stream Walking](#6-flit-stream-walking)
 7. [Ownership and Lifetimes](#7-ownership-and-lifetimes)
 8. [Error Handling](#8-error-handling)
@@ -242,7 +242,7 @@ if let Some(swap) = ar.operand1() {
 
 ---
 
-## 5. Parsing a Flit-Mode TLP (PCIe 6.x)
+## 5. Parsing a Flit-Mode TLP (PCIe 6.0 Base Spec)
 
 ### Single-packet parsing
 
@@ -624,5 +624,6 @@ Vec<u8>  ──►  TlpPacket::new(bytes, mode)
 
 All factory functions take `impl Into<Vec<u8>>` — pass `pkt.data()` directly,
 no `.to_vec()` needed.
+
 
 
