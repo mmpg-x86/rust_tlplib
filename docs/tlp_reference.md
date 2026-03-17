@@ -160,7 +160,7 @@ let bytes = vec![
 ];
 let pkt = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();
 assert_eq!(pkt.tlp_type().unwrap(), TlpType::ConfType0WriteReq);
-let cr = new_conf_req(pkt.data());
+let cr = new_conf_req(pkt.data()).unwrap();
 assert_eq!(cr.bus_nr(), 0xC2);
 assert_eq!(cr.dev_nr(), 1);
 ```
@@ -189,7 +189,7 @@ let bytes = vec![
 ];
 let pkt = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();
 assert_eq!(pkt.tlp_type().unwrap(), TlpType::CplData);
-let cpl = new_cmpl_req(pkt.data());
+let cpl = new_cmpl_req(pkt.data()).unwrap();
 assert_eq!(cpl.cmpl_id(), 0x2001);
 assert_eq!(cpl.req_id(), 0x1234);
 assert_eq!(cpl.laddr(), 0x10);
@@ -579,3 +579,4 @@ Doc examples embedded in public API comments — verified by `cargo test --doc`.
 | `new_msg_req` | MessageRequest trait usage |
 | `new_atomic_req` | Full atomic operand parsing |
 | `FlitStreamWalker` | Stream walking with NOP vector |
+

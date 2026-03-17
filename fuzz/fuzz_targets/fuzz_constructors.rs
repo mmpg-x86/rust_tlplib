@@ -31,7 +31,7 @@ fuzz_target!(|data: &[u8]| {
     }
 
     // Config / completion / message: bitfield views read fixed sizes from the
-    // provided buffer and will panic if the buffer is too short. Guards ensure
+    // provided buffer; they return Err(TlpError::InvalidLength) on short inputs.
     // the fuzzer never crashes on short inputs — it simply skips those paths.
 
     // ConfigRequest reads up to byte 7 (64-bit field) — requires 8 bytes.

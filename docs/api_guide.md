@@ -187,7 +187,7 @@ Configuration requests are always 3DW. `new_conf_req` only needs the bytes.
 use rtlp_lib::new_conf_req;
 
 // data() contains DW1+DW2 (8 bytes)
-let cr = new_conf_req(pkt.data());
+let cr = new_conf_req(pkt.data()).expect("insufficient bytes");
 println!("bus={} dev={} func={} reg={}",
          cr.bus_nr(), cr.dev_nr(), cr.func_nr(), cr.reg_nr());
 ```
@@ -197,7 +197,7 @@ println!("bus={} dev={} func={} reg={}",
 ```rust
 use rtlp_lib::new_cmpl_req;
 
-let cpl = new_cmpl_req(pkt.data()).expect("insufficient bytes for CompletionRequest);
+let cpl = new_cmpl_req(pkt.data()).expect("insufficient bytes");
 println!("status={} byte_count={} lower_addr=0x{:02x}",
          cpl.cmpl_stat(), cpl.byte_cnt(), cpl.laddr());
 ```
@@ -210,7 +210,7 @@ println!("status={} byte_count={} lower_addr=0x{:02x}",
 ```rust
 use rtlp_lib::new_msg_req;
 
-let msg = new_msg_req(pkt.data()).expect(insufficient bytes for MessageRequest);
+let msg = new_msg_req(pkt.data()).expect("insufficient bytes");
 println!("msg_code=0x{:02X} dw3=0x{:08X} dw4=0x{:08X}",
          msg.msg_code(), msg.dw3(), msg.dw4());
 ```
@@ -379,7 +379,7 @@ internally. The trait object they return owns its data:
 
 ```rust
 // Passing pkt.data() (&[u8]) → one Vec allocation inside new_conf_req
-let cr: Box<dyn ConfigurationRequest> = new_conf_req(pkt.data());
+let cr: Box<dyn ConfigurationRequest> = new_conf_req(pkt.data()).expect("insufficient bytes");
 // `cr` is independent of `pkt` — pkt can be dropped here
 drop(pkt);
 println!("bus={}", cr.bus_nr());  // cr still valid
@@ -388,7 +388,7 @@ println!("bus={}", cr.bus_nr());  // cr still valid
 If you already have a `Vec<u8>`, you can pass it without cloning:
 ```rust
 let owned: Vec<u8> = read_config_bytes();
-let cr = new_conf_req(owned);  // Vec moved in, no extra allocation
+let cr = new_conf_req(owned).expect("insufficient bytes");  // Vec moved in, no extra allocation
 ```
 
 ### `new_atomic_req` takes `&TlpPacket`
@@ -624,4 +624,5 @@ Vec<u8>  ──►  TlpPacket::new(bytes, mode)
 
 All factory functions take `impl Into<Vec<u8>>` — pass `pkt.data()` directly,
 no `.to_vec()` needed.
+
 

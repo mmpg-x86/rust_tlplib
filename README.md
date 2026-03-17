@@ -72,7 +72,7 @@ match packet.mode() {
             }
             TlpType::ConfType0ReadReq | TlpType::ConfType0WriteReq |
             TlpType::ConfType1ReadReq | TlpType::ConfType1WriteReq => {
-                let cr = new_conf_req(packet.data());  // accepts &[u8] directly
+                let cr = new_conf_req(packet.data()).unwrap();  // accepts &[u8] directly
                 println!("config bus={} dev={} func={}",
                          cr.bus_nr(), cr.dev_nr(), cr.func_nr());
             }
@@ -235,4 +235,5 @@ See [TESTS.md](TESTS.md) for the full test structure and flit mode tier descript
 ## License
 
 Licensed under the 3-Clause BSD License — see [LICENSE](LICENSE).
+
 
