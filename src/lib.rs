@@ -531,7 +531,7 @@ impl<T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
 /// }
 ///
 ///
-/// # let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+/// # let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
 /// # decode(bytes).unwrap();
 /// ```
 pub fn new_mem_req(
@@ -540,10 +540,18 @@ pub fn new_mem_req(
 ) -> Result<Box<dyn MemRequest>, TlpError> {
     let bytes = bytes.into();
     match format {
-        TlpFmt::NoDataHeader3DW => Ok(Box::new(MemRequest3DW(bytes))),
-        TlpFmt::NoDataHeader4DW => Ok(Box::new(MemRequest4DW(bytes))),
-        TlpFmt::WithDataHeader3DW => Ok(Box::new(MemRequest3DW(bytes))),
-        TlpFmt::WithDataHeader4DW => Ok(Box::new(MemRequest4DW(bytes))),
+        TlpFmt::NoDataHeader3DW | TlpFmt::WithDataHeader3DW => {
+            if bytes.len() < 8 {
+                return Err(TlpError::InvalidLength);
+            }
+            Ok(Box::new(MemRequest3DW(bytes)))
+        }
+        TlpFmt::NoDataHeader4DW | TlpFmt::WithDataHeader4DW => {
+            if bytes.len() < 12 {
+                return Err(TlpError::InvalidLength);
+            }
+            Ok(Box::new(MemRequest4DW(bytes)))
+        }
         TlpFmt::TlpPrefix => Err(TlpError::UnsupportedCombination),
     }
 }
@@ -592,11 +600,19 @@ pub trait ConfigurationRequest {
 ///
 /// // data() returns DW1+DW2 (8 bytes) — exactly what ConfigRequest needs
 /// // data() returns &[u8] — pass it directly, no .to_vec() needed
-/// let config_req: Box<dyn ConfigurationRequest> = new_conf_req(tlp.data());
+/// let config_req: Box<dyn ConfigurationRequest> = new_conf_req(tlp.data()).unwrap();
 /// assert_eq!(config_req.bus_nr(), 0xC2);
 /// ```
-pub fn new_conf_req(bytes: impl Into<Vec<u8>>) -> Box<dyn ConfigurationRequest> {
-    Box::new(ConfigRequest(bytes.into()))
+///
+/// # Errors
+///
+/// - [`TlpError::InvalidLength`] if `bytes.len() < 8` (ConfigRequest reads a 64-bit field).
+pub fn new_conf_req(bytes: impl Into<Vec<u8>>) -> Result<Box<dyn ConfigurationRequest>, TlpError> {
+    let bytes = bytes.into();
+    if bytes.len() < 8 {
+        return Err(TlpError::InvalidLength);
+    }
+    Ok(Box::new(ConfigRequest(bytes)))
 }
 
 // Bitfield structure for Configuration Request headers (DW1+DW2).
@@ -732,12 +748,20 @@ impl<T: AsRef<[u8]>> CompletionRequest for CompletionReqDW23<T> {
 /// // TLP Format usually comes from TlpPacket or Header here we made up one for example
 /// let tlpfmt = TlpFmt::WithDataHeader4DW;
 ///
-/// let cmpl_req: Box<dyn CompletionRequest> = new_cmpl_req(bytes);
+/// let cmpl_req: Box<dyn CompletionRequest> = new_cmpl_req(bytes).unwrap();
 ///
 /// println!("Requester ID from Completion{}", cmpl_req.req_id());
 /// ```
-pub fn new_cmpl_req(bytes: impl Into<Vec<u8>>) -> Box<dyn CompletionRequest> {
-    Box::new(CompletionReqDW23(bytes.into()))
+///
+/// # Errors
+///
+/// - [`TlpError::InvalidLength`] if `bytes.len() < 8` (CompletionReqDW23 reads a 64-bit field).
+pub fn new_cmpl_req(bytes: impl Into<Vec<u8>>) -> Result<Box<dyn CompletionRequest>, TlpError> {
+    let bytes = bytes.into();
+    if bytes.len() < 8 {
+        return Err(TlpError::InvalidLength);
+    }
+    Ok(Box::new(CompletionReqDW23(bytes)))
 }
 
 /// Message Request trait
@@ -800,15 +824,23 @@ impl<T: AsRef<[u8]>> MessageRequest for MessageReqDW24<T> {
 /// use rtlp_lib::MessageRequest;
 /// use rtlp_lib::new_msg_req;
 ///
-/// let bytes = vec![0x20, 0x01, 0xFF, 0xC2, 0x00, 0x00, 0x00, 0x00];
+/// let bytes = vec![0x20, 0x01, 0xFF, 0xC2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
 /// let tlpfmt = TlpFmt::NoDataHeader3DW;
 ///
-/// let msg_req: Box<dyn MessageRequest> = new_msg_req(bytes);
+/// let msg_req: Box<dyn MessageRequest> = new_msg_req(bytes).unwrap();
 ///
 /// println!("Requester ID from Message{}", msg_req.req_id());
 /// ```
-pub fn new_msg_req(bytes: impl Into<Vec<u8>>) -> Box<dyn MessageRequest> {
-    Box::new(MessageReqDW24(bytes.into()))
+///
+/// # Errors
+///
+/// - [`TlpError::InvalidLength`] if `bytes.len() < 12` (MessageReqDW24 reads up to bit 95).
+pub fn new_msg_req(bytes: impl Into<Vec<u8>>) -> Result<Box<dyn MessageRequest>, TlpError> {
+    let bytes = bytes.into();
+    if bytes.len() < 12 {
+        return Err(TlpError::InvalidLength);
+    }
+    Ok(Box::new(MessageReqDW24(bytes)))
 }
 
 /// Atomic Request trait: header fields and operand(s) for atomic op TLPs.
@@ -1470,13 +1502,13 @@ impl TlpPacketHeader {
 ///      TlpType::ConfType0ReadReq |
 ///      TlpType::ConfType0WriteReq |
 ///      TlpType::ConfType1ReadReq |
-///      TlpType::ConfType1WriteReq => requester_id = new_conf_req(packet.data().to_vec()).req_id(),
+///      TlpType::ConfType1WriteReq => requester_id = new_conf_req(packet.data().to_vec()).unwrap().req_id(),
 ///      TlpType::MsgReq |
-///      TlpType::MsgReqData => requester_id = new_msg_req(packet.data().to_vec()).req_id(),
+///      TlpType::MsgReqData => requester_id = new_msg_req(packet.data().to_vec()).unwrap().req_id(),
 ///      TlpType::Cpl |
 ///      TlpType::CplData |
 ///      TlpType::CplLocked |
-///      TlpType::CplDataLocked => requester_id = new_cmpl_req(packet.data().to_vec()).req_id(),
+///      TlpType::CplDataLocked => requester_id = new_cmpl_req(packet.data().to_vec()).unwrap().req_id(),
 ///      TlpType::LocalTlpPrefix |
 ///      TlpType::EndToEndTlpPrefix => println!("I need to implement TLP Type: {:?}", tlp_type),
 /// }
@@ -1517,14 +1549,13 @@ impl TlpPacket {
         }
     }
 
-    fn new_non_flit(bytes: Vec<u8>) -> Result<TlpPacket, TlpError> {
+    fn new_non_flit(mut bytes: Vec<u8>) -> Result<TlpPacket, TlpError> {
         if bytes.len() < 4 {
             return Err(TlpError::InvalidLength);
         }
-        let mut ownbytes = bytes.to_vec();
         let mut header = vec![0; 4];
-        header.clone_from_slice(&ownbytes[0..4]);
-        let data = ownbytes.drain(4..).collect();
+        header.clone_from_slice(&bytes[0..4]);
+        let data = bytes.drain(4..).collect();
         Ok(TlpPacket {
             header: TlpPacketHeader::new_non_flit(header)?,
             flit_dw0: None,
@@ -2797,7 +2828,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, // completer_id, cmpl_stat, bcm, byte_cnt
             0x00, 0x00, 0x00, 0x7F, // req_id, tag, R=0, laddr=0x7F
         ];
-        let cmpl = new_cmpl_req(bytes);
+        let cmpl = new_cmpl_req(bytes).unwrap();
         assert_eq!(cmpl.laddr(), 0x7F);
     }
 
@@ -2806,7 +2837,7 @@ mod tests {
         // Lower Address = 64 (0x40) — bit 6 is the bit that was previously lost
         // DW2 byte 3: R=0, LowerAddr=0x40 → byte = 0x40
         let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40];
-        let cmpl = new_cmpl_req(bytes);
+        let cmpl = new_cmpl_req(bytes).unwrap();
         assert_eq!(cmpl.laddr(), 0x40);
     }
 
@@ -2815,7 +2846,7 @@ mod tests {
         // R=1, LowerAddr=0x55 (85)
         // DW2 byte 3: 1_1010101 = 0xD5
         let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xD5];
-        let cmpl = new_cmpl_req(bytes);
+        let cmpl = new_cmpl_req(bytes).unwrap();
         assert_eq!(cmpl.laddr(), 0x55);
     }
 
@@ -2827,7 +2858,7 @@ mod tests {
             0x20, 0x01, 0x00, 0xFC, // completer_id=0x2001, status=0, bcm=0, byte_cnt=0x0FC
             0x12, 0x34, 0xAB, 0x64, // req_id=0x1234, tag=0xAB, R=0, laddr=0x64
         ];
-        let cmpl = new_cmpl_req(bytes);
+        let cmpl = new_cmpl_req(bytes).unwrap();
         assert_eq!(cmpl.cmpl_id(), 0x2001);
         assert_eq!(cmpl.byte_cnt(), 0x0FC);
         assert_eq!(cmpl.req_id(), 0x1234);
@@ -2858,7 +2889,7 @@ mod tests {
             0xDE, 0xAD, 0xBE, 0xEF, // DW3
             0x00, 0x00, 0x00, 0x00, // DW4
         ];
-        let msg = new_msg_req(bytes);
+        let msg = new_msg_req(bytes).unwrap();
         assert_eq!(msg.dw3(), 0xDEAD_BEEF);
     }
 
@@ -2870,7 +2901,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, // DW3
             0xCA, 0xFE, 0xBA, 0xBE, // DW4
         ];
-        let msg = new_msg_req(bytes);
+        let msg = new_msg_req(bytes).unwrap();
         assert_eq!(msg.dw4(), 0xCAFE_BABE);
     }
 
@@ -2880,7 +2911,7 @@ mod tests {
         let bytes = vec![
             0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
         ];
-        let msg = new_msg_req(bytes);
+        let msg = new_msg_req(bytes).unwrap();
         assert_eq!(msg.dw3(), 0xFFFF_FFFF);
         assert_eq!(msg.dw4(), 0xFFFF_FFFF);
     }
@@ -2891,7 +2922,7 @@ mod tests {
         let bytes = vec![
             0xAB, 0xCD, 0x42, 0x7F, 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0,
         ];
-        let msg = new_msg_req(bytes);
+        let msg = new_msg_req(bytes).unwrap();
         assert_eq!(msg.req_id(), 0xABCD);
         assert_eq!(msg.tag(), 0x42);
         assert_eq!(msg.msg_code(), 0x7F);

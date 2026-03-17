@@ -35,8 +35,7 @@ fuzz_target!(|data: &[u8]| {
     // the fuzzer never crashes on short inputs — it simply skips those paths.
 
     // ConfigRequest reads up to byte 7 (64-bit field) — requires 8 bytes.
-    if bytes.len() >= 8 {
-        let cr = new_conf_req(bytes.clone());
+    if let Ok(cr) = new_conf_req(bytes.clone()) {
         let _ = cr.req_id();
         let _ = cr.tag();
         let _ = cr.bus_nr();
@@ -47,8 +46,7 @@ fuzz_target!(|data: &[u8]| {
     }
 
     // CompletionReqDW23 reads laddr at bits[63:57] — requires 8 bytes.
-    if bytes.len() >= 8 {
-        let cpl = new_cmpl_req(bytes.clone());
+    if let Ok(cpl) = new_cmpl_req(bytes.clone()) {
         let _ = cpl.cmpl_id();
         let _ = cpl.cmpl_stat();
         let _ = cpl.bcm();
@@ -59,8 +57,7 @@ fuzz_target!(|data: &[u8]| {
     }
 
     // MessageReqDW24 reads dw4 at bits[95:64] — requires 12 bytes.
-    if bytes.len() >= 12 {
-        let msg = new_msg_req(bytes.clone());
+    if let Ok(msg) = new_msg_req(bytes.clone()) {
         let _ = msg.req_id();
         let _ = msg.tag();
         let _ = msg.msg_code();

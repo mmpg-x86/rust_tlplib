@@ -377,18 +377,19 @@ fn msg_req_data_all_six_routing_subtypes_decode() {
 #[test]
 fn msg_req_end_to_end_path_with_new_msg_req() {
     // Full end-to-end: packet decode -> tlp_type() -> new_msg_req(pkt.data()) -> field access
-    // Fmt=000, Type=10000 (route to RC) → byte0 = 0x10
+    // Fmt=001 (4DW no data), Type=10000 (route to RC) → byte0 = 0x30
     // DW1: req_id=0xBEEF, tag=0xA5, msg_code=0x7E
-    // DW2: route word (zero)
+    // DW2-DW3: route words (zero) — 4DW gives 12 bytes in pkt.data(), satisfying new_msg_req
     let pkt_bytes = vec![
-        0x10, 0x00, 0x00, 0x00, // DW0: MsgReq route-to-RC
+        0x30, 0x00, 0x00, 0x00, // DW0: MsgReq 4DW route-to-RC
         0xBE, 0xEF, 0xA5, 0x7E, // DW1: req_id=0xBEEF, tag=0xA5, msg_code=0x7E
         0x00, 0x00, 0x00, 0x00, // DW2: route word
+        0x00, 0x00, 0x00, 0x00, // DW3: route word
     ];
     let pkt = TlpPacket::new(pkt_bytes, TlpMode::NonFlit).unwrap();
     assert_eq!(pkt.tlp_type().unwrap(), TlpType::MsgReq);
 
-    let msg = new_msg_req(pkt.data());
+    let msg = new_msg_req(pkt.data()).unwrap();
     assert_eq!(msg.req_id(), 0xBEEF);
     assert_eq!(msg.tag(), 0xA5);
     assert_eq!(msg.msg_code(), 0x7E);

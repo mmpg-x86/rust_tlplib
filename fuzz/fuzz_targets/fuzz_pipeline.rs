@@ -39,9 +39,8 @@ fuzz_target!(|data: &[u8]| {
                 | TlpType::ConfType0WriteReq
                 | TlpType::ConfType1ReadReq
                 | TlpType::ConfType1WriteReq => {
-                    // Guard: ConfigRequest bitfield reads up to byte 7 (64-bit field).
-                    if pkt.data().len() >= 8 {
-                        let cr = new_conf_req(pkt.data());
+                    // new_conf_req returns Err(InvalidLength) for < 8 bytes — safe to call directly.
+                    if let Ok(cr) = new_conf_req(pkt.data()) {
                         let _ = cr.req_id();
                         let _ = cr.tag();
                         let _ = cr.bus_nr();
@@ -52,9 +51,8 @@ fuzz_target!(|data: &[u8]| {
                     }
                 }
                 TlpType::Cpl | TlpType::CplData | TlpType::CplLocked | TlpType::CplDataLocked => {
-                    // Guard: CompletionReqDW23 bitfield reads up to byte 7 (laddr at bits[63:57]).
-                    if pkt.data().len() >= 8 {
-                        let cpl = new_cmpl_req(pkt.data());
+                    // new_cmpl_req returns Err(InvalidLength) for < 8 bytes — safe to call directly.
+                    if let Ok(cpl) = new_cmpl_req(pkt.data()) {
                         let _ = cpl.cmpl_id();
                         let _ = cpl.cmpl_stat();
                         let _ = cpl.bcm();
@@ -65,9 +63,8 @@ fuzz_target!(|data: &[u8]| {
                     }
                 }
                 TlpType::MsgReq | TlpType::MsgReqData => {
-                    // Guard: MessageReqDW24 reads dw4 at bits[95:64] — requires 12 bytes.
-                    if pkt.data().len() >= 12 {
-                        let msg = new_msg_req(pkt.data());
+                    // new_msg_req returns Err(InvalidLength) for < 12 bytes — safe to call directly.
+                    if let Ok(msg) = new_msg_req(pkt.data()) {
                         let _ = msg.req_id();
                         let _ = msg.tag();
                         let _ = msg.msg_code();
