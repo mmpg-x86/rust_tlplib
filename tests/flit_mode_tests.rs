@@ -3,25 +3,14 @@
 //! Scope: parser tests for TLP byte streams as they appear inside a PCIe 6.x FLIT.
 //! These are NOT full 256-byte FLIT containers — no DLP, CRC or FEC bytes.
 //!
-//! # Tier structure
-//!
-//! | Tier | Status | Unlock condition |
-//! |------|--------|-----------------|
-//! | 0 | ✅ passes today | N/A — permanent stub regression guard |
-//! | 1 | ✅ passes today | `FlitDW0::from_dw0()` ← **implemented** |
-//! | 2 | ✅ passes today | `FlitTlpType::base_header_dw()` ← **implemented** |
-//! | 3 | ✅ passes today | `FlitOhcA` + `validate_mandatory_ohc()` ← **implemented** |
-//! | 4 | ✅ passes today | `FlitStreamWalker` ← **implemented** |
-//! | 5 | ✅ passes today | `TlpPacket::new_flit()` ← **implemented** |
-//!
 //! For non-flit tests see `tests/non_flit_tests.rs`.
 //! For API surface tests see `tests/api_tests.rs`.
-//! Design rationale: `docs/flit_mode_test_plan.md`.
+//! Byte-level TLP examples and test inventory: `docs/tlp_reference.md`.
 
 use rtlp_lib::*;
 
 // ============================================================================
-// FM_* test vectors — from docs/flit_mode_tlp_examples.md
+// FM_* test vectors — byte-level examples in docs/tlp_reference.md
 //
 // DW0 flit-mode encoding:
 //   Byte 0 = Type[7:0]   (flat 8-bit type code, NOT non-flit fmt+type)
