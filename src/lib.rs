@@ -1724,6 +1724,265 @@ impl TlpPacket {
     }
 }
 
+// ============================================================================
+// Display implementations — Wireshark-style one-line summaries
+// ============================================================================
+
+/// Short mnemonic for a non-flit TLP type + format combination.
+fn non_flit_short_name(tlp_type: &TlpType, fmt: &TlpFmt) -> &'static str {
+    match tlp_type {
+        TlpType::MemReadReq => match fmt {
+            TlpFmt::NoDataHeader4DW => "MRd64",
+            _ => "MRd32",
+        },
+        TlpType::MemReadLockReq => "MRdLk",
+        TlpType::MemWriteReq => match fmt {
+            TlpFmt::WithDataHeader4DW => "MWr64",
+            _ => "MWr32",
+        },
+        TlpType::IOReadReq => "IORd",
+        TlpType::IOWriteReq => "IOWr",
+        TlpType::ConfType0ReadReq => "CfgRd0",
+        TlpType::ConfType0WriteReq => "CfgWr0",
+        TlpType::ConfType1ReadReq => "CfgRd1",
+        TlpType::ConfType1WriteReq => "CfgWr1",
+        TlpType::MsgReq => "Msg",
+        TlpType::MsgReqData => "MsgD",
+        TlpType::Cpl => "Cpl",
+        TlpType::CplData => "CplD",
+        TlpType::CplLocked => "CplLk",
+        TlpType::CplDataLocked => "CplDLk",
+        TlpType::FetchAddAtomicOpReq => "FAdd",
+        TlpType::SwapAtomicOpReq => "Swap",
+        TlpType::CompareSwapAtomicOpReq => "CAS",
+        TlpType::DeferrableMemWriteReq => match fmt {
+            TlpFmt::WithDataHeader4DW => "DMWr64",
+            _ => "DMWr32",
+        },
+        TlpType::LocalTlpPrefix => "LPfx",
+        TlpType::EndToEndTlpPrefix => "E2EPfx",
+    }
+}
+
+/// Short mnemonic for a flit-mode TLP type.
+fn flit_short_name(flit_type: &FlitTlpType) -> &'static str {
+    match flit_type {
+        FlitTlpType::Nop => "NOP",
+        FlitTlpType::MemRead32 => "MRd32",
+        FlitTlpType::UioMemRead => "UMRd64",
+        FlitTlpType::MsgToRc => "Msg",
+        FlitTlpType::MemWrite32 => "MWr32",
+        FlitTlpType::IoWrite => "IOWr",
+        FlitTlpType::CfgWrite0 => "CfgWr0",
+        FlitTlpType::FetchAdd32 => "FAdd32",
+        FlitTlpType::CompareSwap32 => "CAS32",
+        FlitTlpType::DeferrableMemWrite32 => "DMWr32",
+        FlitTlpType::UioMemWrite => "UMWr64",
+        FlitTlpType::MsgDToRc => "MsgD",
+        FlitTlpType::LocalTlpPrefix => "LPfx",
+    }
+}
+
+impl fmt::Display for TlpPacketHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.tlp_type() {
+            Ok(t) => {
+                let fmt_val = TlpFmt::try_from(self.get_format());
+                let short = match &fmt_val {
+                    Ok(fm) => non_flit_short_name(&t, fm),
+                    Err(_) => "???",
+                };
+                write!(
+                    f,
+                    "{short} len={} tc={} td={} ep={}",
+                    self.get_length(),
+                    self.get_tc(),
+                    self.get_td(),
+                    self.get_ep()
+                )
+            }
+            Err(_) => write!(
+                f,
+                "??? fmt={:#05b} type={:#07b} len={}",
+                self.get_format(),
+                self.get_type(),
+                self.get_length()
+            ),
+        }
+    }
+}
+
+impl fmt::Display for TlpPacket {
+    /// Wireshark-style one-line summary.
+    ///
+    /// # Non-flit examples
+    /// ```text
+    /// MRd32 len=1 req=0400 tag=20 addr=F620000C
+    /// MWr64 len=4 req=BEEF tag=A5 addr=100000000
+    /// CplD len=1 cpl=2001 req=0400 tag=AB stat=0 bc=252
+    /// CfgRd0 len=1 req=0100 tag=01 bus=02 dev=03 fn=1 reg=10
+    /// Msg len=0 req=ABCD tag=01 code=7F
+    /// FAdd len=1 req=DEAD tag=42 addr=C0010004
+    /// ```
+    ///
+    /// # Flit examples
+    /// ```text
+    /// Flit:MWr32 len=4 tc=0 ohc=1
+    /// Flit:NOP
+    /// Flit:CfgWr0 len=1 tc=0 ohc=1
+    /// ```
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.mode() {
+            TlpMode::Flit => {
+                if let Some(dw0) = &self.flit_dw0 {
+                    let short = flit_short_name(&dw0.tlp_type);
+                    write!(f, "Flit:{short}")?;
+
+                    // NOP and LocalTlpPrefix are minimal — just the type name
+                    if matches!(dw0.tlp_type, FlitTlpType::Nop | FlitTlpType::LocalTlpPrefix) {
+                        return Ok(());
+                    }
+
+                    write!(f, " len={} tc={}", dw0.length, dw0.tc)?;
+
+                    if dw0.ohc_count() > 0 {
+                        write!(f, " ohc={}", dw0.ohc_count())?;
+                    }
+                    if dw0.attr != 0 {
+                        write!(f, " attr={}", dw0.attr)?;
+                    }
+                    if dw0.ts != 0 {
+                        write!(f, " ts={}", dw0.ts)?;
+                    }
+
+                    // Note: OHC-A bytes are consumed by the header parser and not
+                    // available in data(). OHC presence is shown via ohc= count above.
+
+                    Ok(())
+                } else {
+                    write!(f, "Flit:???")
+                }
+            }
+            TlpMode::NonFlit => {
+                let tlp_type = match self.tlp_type() {
+                    Ok(t) => t,
+                    Err(_) => return write!(f, "??? data={}B", self.data.len()),
+                };
+                let fmt = match self.tlp_format() {
+                    Ok(fm) => fm,
+                    Err(_) => return write!(f, "{tlp_type:?} data={}B", self.data.len()),
+                };
+
+                let short_name = non_flit_short_name(&tlp_type, &fmt);
+                let length = self.header.get_length();
+                let data = self.data();
+
+                match tlp_type {
+                    // Memory requests — show req_id, tag, address
+                    TlpType::MemReadReq
+                    | TlpType::MemReadLockReq
+                    | TlpType::MemWriteReq
+                    | TlpType::DeferrableMemWriteReq
+                    | TlpType::IOReadReq
+                    | TlpType::IOWriteReq => {
+                        let header_len = core::cmp::min(data.len(), 12);
+                        if let Ok(mr) = new_mem_req(data[..header_len].to_vec(), &fmt) {
+                            write!(
+                                f,
+                                "{short_name} len={length} req={:04X} tag={:02X} addr={:X}",
+                                mr.req_id(),
+                                mr.tag(),
+                                mr.address()
+                            )
+                        } else {
+                            write!(f, "{short_name} len={length}")
+                        }
+                    }
+                    // Config requests — show req_id, tag, bus/dev/fn/reg
+                    TlpType::ConfType0ReadReq
+                    | TlpType::ConfType0WriteReq
+                    | TlpType::ConfType1ReadReq
+                    | TlpType::ConfType1WriteReq => {
+                        let header_bytes = if data.len() >= 8 { &data[..8] } else { data };
+                        if let Ok(cr) = new_conf_req(header_bytes.to_vec()) {
+                            write!(
+                                f,
+                                "{short_name} len={length} req={:04X} tag={:02X} bus={:02X} dev={:02X} fn={} reg={:02X}",
+                                cr.req_id(),
+                                cr.tag(),
+                                cr.bus_nr(),
+                                cr.dev_nr(),
+                                cr.func_nr(),
+                                cr.reg_nr()
+                            )
+                        } else {
+                            write!(f, "{short_name} len={length}")
+                        }
+                    }
+                    // Completions — show completer, requester, status, byte count
+                    TlpType::Cpl
+                    | TlpType::CplData
+                    | TlpType::CplLocked
+                    | TlpType::CplDataLocked => {
+                        let header_bytes = if data.len() >= 12 { &data[..12] } else { data };
+                        if let Ok(cpl) = new_cmpl_req(header_bytes.to_vec()) {
+                            write!(
+                                f,
+                                "{short_name} len={length} cpl={:04X} req={:04X} tag={:02X} stat={} bc={}",
+                                cpl.cmpl_id(),
+                                cpl.req_id(),
+                                cpl.tag(),
+                                cpl.cmpl_stat(),
+                                cpl.byte_cnt()
+                            )
+                        } else {
+                            write!(f, "{short_name} len={length}")
+                        }
+                    }
+                    // Messages — show req_id, tag, message code
+                    TlpType::MsgReq | TlpType::MsgReqData => {
+                        let header_bytes = if data.len() > 12 { &data[..12] } else { data };
+                        if let Ok(msg) = new_msg_req(header_bytes.to_vec()) {
+                            write!(
+                                f,
+                                "{short_name} len={length} req={:04X} tag={:02X} code={:02X}",
+                                msg.req_id(),
+                                msg.tag(),
+                                msg.msg_code()
+                            )
+                        } else {
+                            write!(f, "{short_name} len={length}")
+                        }
+                    }
+                    // Atomics — show req_id, tag, address
+                    TlpType::FetchAddAtomicOpReq
+                    | TlpType::SwapAtomicOpReq
+                    | TlpType::CompareSwapAtomicOpReq => {
+                        if let Ok(ar) = new_atomic_req(self) {
+                            write!(
+                                f,
+                                "{short_name} len={length} req={:04X} tag={:02X} addr={:X}",
+                                ar.req_id(),
+                                ar.tag(),
+                                ar.address()
+                            )
+                        } else {
+                            write!(f, "{short_name} len={length}")
+                        }
+                    }
+                    // Prefixes — just the type
+                    TlpType::LocalTlpPrefix | TlpType::EndToEndTlpPrefix => {
+                        write!(f, "{short_name} len={length}")
+                    }
+                }
+            }
+            // TlpMode is #[non_exhaustive]; future variants handled here
+            #[allow(unreachable_patterns)]
+            _ => write!(f, "???"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2965,5 +3224,175 @@ mod tests {
         let s = format!("{:?}", pkt);
         assert!(s.contains("TlpPacket"));
         assert!(s.contains("flit_dw0"));
+    }
+
+    // ── Display tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn display_memread32() {
+        // MRd32: fmt=000 type=00000, length=1, req_id=0x0400, tag=0x00, addr=0x2001FF00
+        let bytes = vec![
+            0x00, 0x00, 0x00, 0x01, // DW0
+            0x04, 0x00, 0x00, 0x0F, // DW1: req_id, tag, BE
+            0x20, 0x01, 0xFF, 0x00, // DW2: addr32
+        ];
+        let pkt = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();
+        let s = format!("{pkt}");
+        assert!(s.starts_with("MRd32"));
+        assert!(s.contains("req=0400"));
+        assert!(s.contains("addr=2001FF00"));
+    }
+
+    #[test]
+    fn display_memwrite64() {
+        // MWr64: fmt=011 type=00000, length=1
+        let bytes = vec![
+            0x60, 0x00, 0x00, 0x01, // DW0
+            0xBE, 0xEF, 0xA5, 0x0F, // DW1
+            0x00, 0x00, 0x00, 0x01, // DW2: addr_hi
+            0x00, 0x00, 0x00, 0x00, // DW3: addr_lo
+            0xDE, 0xAD, 0xBE, 0xEF, // payload
+        ];
+        let pkt = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();
+        let s = format!("{pkt}");
+        assert!(s.starts_with("MWr64"));
+        assert!(s.contains("req=BEEF"));
+        assert!(s.contains("tag=A5"));
+    }
+
+    #[test]
+    fn display_config_type0_read() {
+        // CfgRd0: fmt=000 type=00100, length=1
+        let bytes = vec![
+            0x04, 0x00, 0x00, 0x01, // DW0
+            0x01, 0x00, 0x01, 0x0F, // DW1: req_id=0x0100, tag=1
+            0x02, 0x18, 0x00, 0x40, // DW2: bus=2, dev=3, fn=0, reg=0x10
+        ];
+        let pkt = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();
+        let s = format!("{pkt}");
+        assert!(s.starts_with("CfgRd0"));
+        assert!(s.contains("req=0100"));
+        assert!(s.contains("bus=02"));
+    }
+
+    #[test]
+    fn display_completion_with_data() {
+        // CplD: fmt=010 type=01010, length=1
+        let bytes = vec![
+            0x4A, 0x00, 0x00, 0x01, // DW0
+            0x20, 0x01, 0x00, 0xFC, // DW1: cpl_id=0x2001, stat=0, bc=252
+            0x04, 0x00, 0xAB, 0x00, // DW2: req_id=0x0400, tag=0xAB
+            0xDE, 0xAD, 0xBE, 0xEF, // payload
+        ];
+        let pkt = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();
+        let s = format!("{pkt}");
+        assert!(s.starts_with("CplD"));
+        assert!(s.contains("cpl=2001"));
+        assert!(s.contains("req=0400"));
+        assert!(s.contains("tag=AB"));
+    }
+
+    #[test]
+    fn display_message() {
+        // Msg: fmt=001 type=10000 (route to RC, no data, 4DW)
+        let bytes = vec![
+            0x30, 0x00, 0x00, 0x00, // DW0
+            0xAB, 0xCD, 0x01, 0x7F, // DW1: req_id=0xABCD, tag=1, code=0x7F
+            0x00, 0x00, 0x00, 0x00, // DW2 (dw3)
+            0x00, 0x00, 0x00, 0x00, // DW3 (dw4)
+        ];
+        let pkt = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();
+        let s = format!("{pkt}");
+        assert!(s.starts_with("Msg"));
+        assert!(s.contains("req=ABCD"));
+        assert!(s.contains("code=7F"));
+    }
+
+    #[test]
+    fn display_fetchadd_3dw() {
+        // FAdd: fmt=010 type=01100, length=1
+        let bytes = vec![
+            0x4C, 0x00, 0x00, 0x01, // DW0
+            0xDE, 0xAD, 0x42, 0x00, // DW1: req_id=0xDEAD, tag=0x42
+            0xC0, 0x01, 0x00, 0x04, // DW2: addr32=0xC001_0004
+            0x00, 0x00, 0x00, 0x0A, // operand: 10
+        ];
+        let pkt = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();
+        let s = format!("{pkt}");
+        assert!(s.starts_with("FAdd"));
+        assert!(s.contains("req=DEAD"));
+        assert!(s.contains("tag=42"));
+        assert!(s.contains("addr=C0010004"));
+    }
+
+    // ── Flit Display tests ───────────────────────────────────────────────
+
+    #[test]
+    fn display_flit_nop() {
+        let bytes = vec![0x00, 0x00, 0x00, 0x00]; // NOP: type=0x00
+        let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
+        assert_eq!(format!("{pkt}"), "Flit:NOP");
+    }
+
+    #[test]
+    fn display_flit_memwrite32() {
+        // MWr32: type=0x40, tc=0, ohc=0, length=4
+        let mut bytes = vec![
+            0x40, 0x00, 0x00, 0x04, // DW0: MWr32, tc=0, ohc=0, len=4
+            0x00, 0x00, 0x00, 0x00, // DW1: req_id, tag, BE
+            0xDE, 0xAD, 0x00, 0x00, // DW2: addr32
+        ];
+        // 4 DW payload
+        bytes.extend_from_slice(&[0u8; 16]);
+        let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
+        let s = format!("{pkt}");
+        assert!(s.starts_with("Flit:MWr32"));
+        assert!(s.contains("len=4"));
+    }
+
+    #[test]
+    fn display_flit_memread32() {
+        // MRd32: type=0x03, tc=2, ohc=0, length=8
+        let bytes = vec![
+            0x03, 0x40, 0x00, 0x08, // DW0: MRd32, tc=2 (0x40=010_00000), len=8
+            0x00, 0x00, 0x00, 0x00, // DW1
+            0x00, 0x00, 0x10, 0x00, // DW2: addr32
+        ];
+        let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
+        let s = format!("{pkt}");
+        assert!(s.starts_with("Flit:MRd32"));
+        assert!(s.contains("len=8"));
+        assert!(s.contains("tc=2"));
+    }
+
+    #[test]
+    fn display_flit_cfgwrite0_with_ohc() {
+        // CfgWr0: type=0x44, tc=0, ohc=1 (bit 0 set → 1 OHC word), length=1
+        let bytes = vec![
+            0x44, 0x01, 0x00, 0x01, // DW0: CfgWr0, ohc=0x01 (1 OHC word)
+            0x00, 0x00, 0x00, 0x00, // DW1
+            0x00, 0x00, 0x00, 0x00, // DW2
+            0x00, 0x00, 0x00, 0x0F, // OHC-A word
+            0xAA, 0xBB, 0xCC, 0xDD, // payload (1 DW)
+        ];
+        let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
+        let s = format!("{pkt}");
+        assert!(s.starts_with("Flit:CfgWr0"));
+        assert!(s.contains("ohc=1"));
+    }
+
+    #[test]
+    fn display_flit_local_prefix() {
+        let bytes = vec![0x8D, 0x00, 0x00, 0x00]; // LocalTlpPrefix: type=0x8D
+        let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
+        assert_eq!(format!("{pkt}"), "Flit:LPfx");
+    }
+
+    #[test]
+    fn display_header_standalone() {
+        let hdr = TlpPacketHeader::new(vec![0x00, 0x00, 0x00, 0x01], TlpMode::NonFlit).unwrap();
+        let s = format!("{hdr}");
+        assert!(s.starts_with("MRd32"));
+        assert!(s.contains("len=1"));
     }
 }
