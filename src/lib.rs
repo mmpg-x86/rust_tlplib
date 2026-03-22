@@ -1839,10 +1839,7 @@ impl fmt::Display for TlpPacket {
                     write!(f, "Flit:{short}")?;
 
                     // NOP and LocalTlpPrefix are minimal — just the type name
-                    if matches!(
-                        dw0.tlp_type,
-                        FlitTlpType::Nop | FlitTlpType::LocalTlpPrefix
-                    ) {
+                    if matches!(dw0.tlp_type, FlitTlpType::Nop | FlitTlpType::LocalTlpPrefix) {
                         return Ok(());
                     }
 
