@@ -92,10 +92,3 @@ fn json_output_readable() {
     assert!(json.contains("\"length\""));
     assert!(json.contains(": 4"));
 }
-
-#[test]
-fn no_serde_without_feature() {
-    // This test simply verifies compilation — if the serde feature is
-    // disabled, the Serialize/Deserialize derives are absent and this
-    // entire test file is skipped via #![cfg(feature = "serde")].
-}
