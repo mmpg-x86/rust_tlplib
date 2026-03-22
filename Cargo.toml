@@ -12,5 +12,13 @@ readme = "README.md"
 keywords = ["pcie", "tlp", "pci-express", "parser", "hardware"]
 categories = ["hardware-support", "parser-implementations"]
 
+[features]
+default = []
+serde = ["dep:serde"]
+
 [dependencies]
 bitfield = "0.14.0"
+serde = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+serde_json = "1.0.149"

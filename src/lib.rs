@@ -8,6 +8,8 @@
 use std::fmt::{self, Display};
 
 use bitfield::bitfield;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 /// Selects the framing mode used to interpret the raw byte buffer.
 ///
@@ -15,6 +17,7 @@ use bitfield::bitfield;
 /// in PCIe 6.0 and uses fixed 256-byte containers.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TlpMode {
     /// Standard non-flit TLP framing (PCIe 1.0 – 5.0).
     /// Bytes are interpreted directly as a TLP header followed by optional payload.
@@ -28,6 +31,7 @@ pub enum TlpMode {
 
 /// Errors that can occur when parsing TLP packets
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TlpError {
     /// Invalid format field value (bits don't match any known format)
     InvalidFormat,
@@ -64,6 +68,7 @@ impl std::error::Error for TlpError {}
 /// TLP format field encoding — encodes header size and whether a data payload is present.
 #[repr(u8)]
 #[derive(Debug, PartialEq, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TlpFmt {
     /// 3 DW header, no data payload.
     NoDataHeader3DW = 0b000,
@@ -107,6 +112,7 @@ impl TryFrom<u32> for TlpFmt {
 
 /// Atomic operation discriminant
 #[derive(Debug, Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum AtomicOp {
     /// Fetch-and-Add atomic operation.
     FetchAdd,
@@ -118,6 +124,7 @@ pub enum AtomicOp {
 
 /// Operand width — derived from TLP format: 3DW → 32-bit, 4DW → 64-bit
 #[derive(Debug, Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum AtomicWidth {
     /// 32-bit operand (3 DW header).
     W32,
@@ -169,6 +176,7 @@ impl TryFrom<u32> for TlpFormatEncodingType {
 
 /// High-level TLP transaction type decoded from the DW0 Format and Type fields.
 #[derive(PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TlpType {
     /// 32-bit or 64-bit Memory Read Request.
     MemReadReq,
@@ -1014,6 +1022,7 @@ pub fn new_atomic_req(pkt: &TlpPacket) -> Result<Box<dyn AtomicRequest>, TlpErro
 /// downstream `match` arms.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum FlitTlpType {
     /// NOP — smallest flit object, 1 DW base header, no payload.
     Nop,
@@ -1142,6 +1151,7 @@ impl TryFrom<u8> for FlitTlpType {
 ///
 /// Use [`FlitDW0::from_dw0`] to parse from a byte slice.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FlitDW0 {
     /// Decoded TLP type.
     pub tlp_type: FlitTlpType,
@@ -1227,6 +1237,7 @@ impl FlitDW0 {
 /// Use [`FlitOhcA::from_bytes`] to parse from a byte slice that starts at the
 /// first byte of the OHC-A word (i.e. at offset `base_header_dw * 4` in the TLP).
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FlitOhcA {
     /// 20-bit PASID value extracted from bytes 0–2.
     pub pasid: u32,
