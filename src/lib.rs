@@ -1731,11 +1731,16 @@ impl TlpPacket {
 /// Short mnemonic for a non-flit TLP type + format combination.
 fn non_flit_short_name(tlp_type: &TlpType, fmt: &TlpFmt) -> &'static str {
     match tlp_type {
+        // Wildcard arms: tlp_type() already validates that MemReadReq only appears with
+        // NoDataHeader3DW or NoDataHeader4DW, so the `_` arm here only matches
+        // NoDataHeader3DW in practice. Kept as wildcard for brevity since the valid
+        // combinations are enforced upstream.
         TlpType::MemReadReq => match fmt {
             TlpFmt::NoDataHeader4DW => "MRd64",
             _ => "MRd32",
         },
         TlpType::MemReadLockReq => "MRdLk",
+        // Same as MemReadReq — tlp_type() ensures only WithDataHeader3DW/4DW reach here.
         TlpType::MemWriteReq => match fmt {
             TlpFmt::WithDataHeader4DW => "MWr64",
             _ => "MWr32",
@@ -1755,6 +1760,7 @@ fn non_flit_short_name(tlp_type: &TlpType, fmt: &TlpFmt) -> &'static str {
         TlpType::FetchAddAtomicOpReq => "FAdd",
         TlpType::SwapAtomicOpReq => "Swap",
         TlpType::CompareSwapAtomicOpReq => "CAS",
+        // Same pattern — tlp_type() enforces valid format combinations for DMWr.
         TlpType::DeferrableMemWriteReq => match fmt {
             TlpFmt::WithDataHeader4DW => "DMWr64",
             _ => "DMWr32",
@@ -1790,8 +1796,19 @@ impl fmt::Display for TlpPacketHeader {
                 // `tlp_type()` has already validated the format field, so this conversion
                 // is expected to succeed. A failure here would indicate a violated
                 // internal invariant between `tlp_type()` and `TlpFmt::try_from`.
-                let fm = TlpFmt::try_from(self.get_format())
-                    .expect("TlpPacketHeader::tlp_type succeeded with an invalid format field");
+                // Use a graceful fallback instead of expect() — Display must never panic.
+                let fm = match TlpFmt::try_from(self.get_format()) {
+                    Ok(fm) => fm,
+                    Err(_) => {
+                        return write!(
+                            f,
+                            "??? fmt={:#05b} type={:#07b} len={}",
+                            self.get_format(),
+                            self.get_type(),
+                            self.get_length()
+                        );
+                    }
+                };
                 let short = non_flit_short_name(&t, &fm);
                 write!(
                     f,
@@ -1861,6 +1878,10 @@ impl fmt::Display for TlpPacket {
 
                     Ok(())
                 } else {
+                    // Defensive guard: flit_dw0 is always Some for flit-mode packets
+                    // constructed through the public API (new_flit_packet sets it).
+                    // This branch would only trigger if internal construction is
+                    // bypassed or a future refactor breaks the invariant.
                     write!(f, "Flit:???")
                 }
             }
