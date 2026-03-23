@@ -1863,8 +1863,9 @@ impl fmt::Display for TlpPacket {
 
                     write!(f, " len={} tc={}", dw0.length, dw0.tc)?;
 
-                    if dw0.ohc_count() > 0 {
-                        write!(f, " ohc={}", dw0.ohc_count())?;
+                    let ohc = dw0.ohc_count();
+                    if ohc > 0 {
+                        write!(f, " ohc={}", ohc)?;
                     }
                     if dw0.attr != 0 {
                         write!(f, " attr={}", dw0.attr)?;
