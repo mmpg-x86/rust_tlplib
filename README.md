@@ -219,6 +219,21 @@ cargo test --doc                  # doc examples only
 
 See [TESTS.md](TESTS.md) for the full test structure and flit mode tier descriptions.
 
+## Serde Support
+
+Enable the `serde` feature to derive `Serialize`/`Deserialize` on public value types:
+
+```toml
+[dependencies]
+rtlp-lib = { version = "0.5", features = ["serde"] }
+```
+
+**Supported types:** `TlpMode`, `TlpError`, `TlpFmt`, `TlpType`, `AtomicOp`, `FlitTlpType`, `FlitDW0`, `FlitOhcA`
+
+**Not supported:** `TlpPacket` and `TlpPacketHeader` — these contain `TlpHeader`, which uses a bitfield macro that does not support serde derives. If you need to serialize parsed packet data, extract the relevant fields into your own serde-compatible struct.
+
+> **Forward compatibility note:** `TlpMode` and `FlitTlpType` are `#[non_exhaustive]`. New variants added in future versions will serialize correctly on the new version, but deserializing a new variant on an older version will fail. If you persist serialized data to a schema, pin your `rtlp-lib` version accordingly.
+
 ## Documentation
 
 - **[docs/api_guide.md](docs/api_guide.md)** — user-facing guide: parsing flow,

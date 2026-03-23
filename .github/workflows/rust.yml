@@ -35,6 +35,8 @@ jobs:
           components: clippy
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings
+      - name: Run clippy (serde feature)
+        run: cargo clippy --all-targets --features serde -- -D warnings
 
   test:
     name: Tests
@@ -47,6 +49,8 @@ jobs:
           toolchain: "1.85"
       - name: Run tests
         run: cargo test --verbose
+      - name: Run tests (serde feature)
+        run: cargo test --verbose --features serde
 
   msrv:
     name: MSRV (1.85)

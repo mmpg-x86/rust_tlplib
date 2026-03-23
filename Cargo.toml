@@ -14,6 +14,10 @@ categories = ["hardware-support", "parser-implementations"]
 
 [features]
 default = []
+## Enables serde Serialize/Deserialize for all public value types
+## (TlpMode, TlpError, TlpFmt, TlpType, AtomicOp, FlitTlpType, FlitDW0, FlitOhcA).
+## TlpPacket and TlpPacketHeader are NOT included because TlpHeader uses
+## a bitfield macro that does not support serde derives.
 serde = ["dep:serde"]
 
 [dependencies]
