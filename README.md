@@ -96,6 +96,23 @@ match packet.mode() {
 }
 ```
 
+### Display Summaries
+
+`TlpPacket` and `TlpPacketHeader` implement `Display` for compact trace and log
+output:
+
+```text
+MRd32 len=1 req=0000 tag=20 addr=F620000C
+MWr64 len=4 req=BEEF tag=A5 addr=100000000
+CplD len=1 cpl=2001 req=0400 tag=AB stat=0 bc=252
+Flit:MWr32 len=4 tc=0 ohc=0 attr=0 ts=0
+Flit:NOP
+```
+
+Flit summaries always include the stable field set `len`, `tc`, `ohc`,
+`attr`, and `ts`, even when optional values are zero. That keeps log columns
+predictable for downstream parsers.
+
 ### Non-Posted Semantics
 
 The library exposes `TlpType::is_non_posted()` to distinguish requests that
@@ -199,18 +216,18 @@ Every decoding step returns `Result<_, TlpError>`:
 
 ## Tests
 
-The crate has **212 passing tests** (0 ignored):
+The crate has **225 passing tests** in the default feature set (0 ignored):
 
 | Category | File | Passes | Ignored |
 |---|---|---|---|
-| Unit tests | `src/lib.rs` | 56 | 0 |
+| Unit tests | `src/lib.rs` | 69 | 0 |
 | API contract tests | `tests/api_tests.rs` | 77 | 0 |
 | Non-flit integration tests | `tests/non_flit_tests.rs` | 25 | 0 |
 | Flit mode tests | `tests/flit_mode_tests.rs` | 45 | 0 |
 | Doc tests | `src/lib.rs` | 9 | 0 |
 
 ```bash
-cargo test                        # run all 212 tests
+cargo test                        # run all 225 default-feature tests
 cargo test --lib                  # unit tests only
 cargo test --test non_flit_tests  # non-flit integration tests only
 cargo test --test flit_mode_tests # flit mode tests (all tiers)
