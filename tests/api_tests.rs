@@ -5,6 +5,34 @@
 use rtlp_lib::*;
 
 // ============================================================================
+// DeviceID API Tests
+// ============================================================================
+
+#[test]
+fn device_id_type_exists_and_is_public() {
+    let id = DeviceID::from_u16(0x0218);
+    assert_eq!(id.bus(), 0x02);
+    assert_eq!(id.device(), 0x03);
+    assert_eq!(id.function(), 0x00);
+    assert_eq!(id.to_u16(), 0x0218);
+}
+
+#[test]
+fn device_id_implements_display_fromstr_and_conversions() {
+    let id: DeviceID = "02:03.1".parse().unwrap();
+    assert_eq!(format!("{id}"), "02:03.1");
+    assert_eq!(u16::from(id), 0x0219);
+    assert_eq!(DeviceID::from(0x0219), id);
+}
+
+#[test]
+fn device_id_parse_error_is_public_std_error() {
+    let err = "02:20.0".parse::<DeviceID>().unwrap_err();
+    let boxed: Box<dyn std::error::Error> = Box::new(err);
+    assert!(!boxed.to_string().is_empty());
+}
+
+// ============================================================================
 // Error Type API Tests
 // ============================================================================
 

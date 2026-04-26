@@ -1,3 +1,40 @@
+# Release Notes — rtlp-lib v0.5.3
+
+A small additive ergonomics release on top of v0.5.2.
+
+## Added
+
+### `DeviceID` for Bus/Device/Function values
+
+`DeviceID` wraps the 16-bit PCIe Requester ID / Completer ID encoding and exposes bus, device, and function fields directly:
+
+```rust
+use rtlp_lib::DeviceID;
+
+let id = DeviceID::from_u16(0x0218);
+assert_eq!(id.bus(), 0x02);
+assert_eq!(id.device(), 0x03);
+assert_eq!(id.function(), 0x00);
+assert_eq!(format!("{id}"), "02:03.0");
+
+let parsed: DeviceID = "02:03.1".parse().unwrap();
+assert_eq!(parsed.to_u16(), 0x0219);
+```
+
+The type also supports serde when the `serde` feature is enabled.
+
+### Request trait convenience accessors
+
+Request traits now expose parsed BDF helpers while keeping the existing raw integer accessors unchanged:
+
+- `MemRequest::requester_id()` and `MemRequest::device_id()`
+- `ConfigurationRequest::requester_id()`
+- `MessageRequest::requester_id()`
+- `AtomicRequest::requester_id()`
+- `CompletionRequest::completer_id()` and `CompletionRequest::requester_id()`
+
+---
+
 # Release Notes — rtlp-lib v0.5.2
 
 A small Display-format stability release on top of v0.5.1.

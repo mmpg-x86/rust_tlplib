@@ -3,6 +3,14 @@
 use rtlp_lib::*;
 
 #[test]
+fn roundtrip_device_id() {
+    let id = DeviceID::from_parts(0xC2, 0x1F, 0x07).unwrap();
+    let json = serde_json::to_string(&id).unwrap();
+    let back: DeviceID = serde_json::from_str(&json).unwrap();
+    assert_eq!(id, back);
+}
+
+#[test]
 fn roundtrip_tlp_mode() {
     let mode = TlpMode::Flit;
     let json = serde_json::to_string(&mode).unwrap();

@@ -5,6 +5,13 @@ All notable changes to `rtlp_lib` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-04-25
+
+### Added
+
+- `DeviceID` for PCIe Bus/Device/Function identifiers, including raw `u16` conversion, checked construction from BDF parts, standard `BB:DD.F` display formatting, `FromStr` parsing, and serde support when the `serde` feature is enabled.
+- Convenience BDF accessors on request traits: `requester_id()` for memory, configuration, message, and atomic requests; `device_id()` alias for memory requests; and `completer_id()` / `requester_id()` for completions. Existing raw `req_id()` and `cmpl_id()` accessors remain unchanged.
+
 ## [0.5.2] - 2026-04-25
 
 ### Changed

@@ -6,6 +6,7 @@
 //! Supports both non-flit (PCIe 1.0–5.0) and flit-mode (PCIe 6.0+) framing.
 
 use std::fmt::{self, Display};
+use std::str::FromStr;
 
 use bitfield::bitfield;
 #[cfg(feature = "serde")]
@@ -413,6 +414,139 @@ impl<T: AsRef<[u8]>> TlpHeader<T> {
     }
 }
 
+/// PCIe Bus/Device/Function identifier.
+///
+/// A `DeviceID` wraps the 16-bit Requester ID / Completer ID encoding used by
+/// PCIe TLP headers:
+///
+/// - bits 15:8  — bus number
+/// - bits 7:3   — device number
+/// - bits 2:0   — function number
+///
+/// It formats as standard BDF notation (`BB:DD.F`) and can be parsed from the
+/// same representation.
+///
+/// # Examples
+///
+/// ```
+/// use rtlp_lib::DeviceID;
+///
+/// let id = DeviceID::from_u16(0x0218);
+/// assert_eq!(id.bus(), 0x02);
+/// assert_eq!(id.device(), 0x03);
+/// assert_eq!(id.function(), 0x00);
+/// assert_eq!(id.to_u16(), 0x0218);
+/// assert_eq!(format!("{id}"), "02:03.0");
+///
+/// let parsed: DeviceID = "02:03.1".parse().unwrap();
+/// assert_eq!(parsed.to_u16(), 0x0219);
+/// ```
+#[allow(clippy::upper_case_acronyms)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct DeviceID(u16);
+
+impl DeviceID {
+    /// Creates a `DeviceID` from the raw 16-bit BDF encoding.
+    #[must_use]
+    pub const fn from_u16(raw: u16) -> Self {
+        Self(raw)
+    }
+
+    /// Creates a `DeviceID` from bus, device, and function fields.
+    ///
+    /// Returns `None` when `device > 31` or `function > 7`.
+    #[must_use]
+    pub const fn from_parts(bus: u8, device: u8, function: u8) -> Option<Self> {
+        if device <= 0x1f && function <= 0x07 {
+            Some(Self(
+                ((bus as u16) << 8) | ((device as u16) << 3) | function as u16,
+            ))
+        } else {
+            None
+        }
+    }
+
+    /// Returns the raw 16-bit BDF encoding.
+    #[must_use]
+    pub const fn to_u16(self) -> u16 {
+        self.0
+    }
+
+    /// Returns the bus number.
+    #[must_use]
+    pub const fn bus(self) -> u8 {
+        (self.0 >> 8) as u8
+    }
+
+    /// Returns the device number (0..=31).
+    #[must_use]
+    pub const fn device(self) -> u8 {
+        ((self.0 >> 3) & 0x1f) as u8
+    }
+
+    /// Returns the function number (0..=7).
+    #[must_use]
+    pub const fn function(self) -> u8 {
+        (self.0 & 0x07) as u8
+    }
+}
+
+impl From<u16> for DeviceID {
+    fn from(value: u16) -> Self {
+        Self::from_u16(value)
+    }
+}
+
+impl From<DeviceID> for u16 {
+    fn from(value: DeviceID) -> Self {
+        value.to_u16()
+    }
+}
+
+impl Display for DeviceID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:02X}:{:02X}.{:X}",
+            self.bus(),
+            self.device(),
+            self.function()
+        )
+    }
+}
+
+/// Error returned when parsing a `DeviceID` from BDF text fails.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeviceIdParseError;
+
+impl Display for DeviceIdParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "invalid PCIe DeviceID; expected BB:DD.F with device <= 1f and function <= 7"
+        )
+    }
+}
+
+impl std::error::Error for DeviceIdParseError {}
+
+impl FromStr for DeviceID {
+    type Err = DeviceIdParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (bus, rest) = s.split_once(':').ok_or(DeviceIdParseError)?;
+        let (device, function) = rest.split_once('.').ok_or(DeviceIdParseError)?;
+        if bus.len() != 2 || device.len() != 2 || function.len() != 1 {
+            return Err(DeviceIdParseError);
+        }
+        let bus = u8::from_str_radix(bus, 16).map_err(|_| DeviceIdParseError)?;
+        let device = u8::from_str_radix(device, 16).map_err(|_| DeviceIdParseError)?;
+        let function = u8::from_str_radix(function, 16).map_err(|_| DeviceIdParseError)?;
+        Self::from_parts(bus, device, function).ok_or(DeviceIdParseError)
+    }
+}
+
 /// Memory Request Trait:
 /// Applies to 32 and 64 bits requests as well as legacy IO-Request
 /// (Legacy IO Request has the same structure as MemRead3DW)
@@ -420,10 +554,20 @@ impl<T: AsRef<[u8]>> TlpHeader<T> {
 /// Both 3DW (32-bit) and 4DW (64-bit) headers implement this trait
 /// 3DW header is also used for all Legacy IO Requests.
 pub trait MemRequest {
-    /// Returns the Requester ID field (Bus/Device/Function).
+    /// Returns the target address.
     fn address(&self) -> u64;
     /// Returns the 16-bit Requester ID.
     fn req_id(&self) -> u16;
+    /// Returns the Requester ID as a parsed Bus/Device/Function value.
+    fn requester_id(&self) -> DeviceID {
+        DeviceID::from_u16(self.req_id())
+    }
+    /// Returns the Requester ID as a parsed Bus/Device/Function value.
+    ///
+    /// Alias for [`MemRequest::requester_id`].
+    fn device_id(&self) -> DeviceID {
+        self.requester_id()
+    }
     /// Returns the 8-bit Tag field.
     fn tag(&self) -> u8;
     /// Returns the Last DW Byte Enable nibble.
@@ -570,6 +714,10 @@ pub fn new_mem_req(
 pub trait ConfigurationRequest {
     /// Returns the 16-bit Requester ID.
     fn req_id(&self) -> u16;
+    /// Returns the Requester ID as a parsed Bus/Device/Function value.
+    fn requester_id(&self) -> DeviceID {
+        DeviceID::from_u16(self.req_id())
+    }
     /// Returns the 8-bit Tag field.
     fn tag(&self) -> u8;
     /// Returns the Bus Number.
@@ -683,6 +831,10 @@ impl<T: AsRef<[u8]>> ConfigurationRequest for ConfigRequest<T> {
 pub trait CompletionRequest {
     /// Returns the 16-bit Completer ID.
     fn cmpl_id(&self) -> u16;
+    /// Returns the Completer ID as a parsed Bus/Device/Function value.
+    fn completer_id(&self) -> DeviceID {
+        DeviceID::from_u16(self.cmpl_id())
+    }
     /// Returns the 3-bit Completion Status field.
     fn cmpl_stat(&self) -> u8;
     /// Returns the BCM (Byte Count Modified) bit.
@@ -691,6 +843,10 @@ pub trait CompletionRequest {
     fn byte_cnt(&self) -> u16;
     /// Returns the 16-bit Requester ID.
     fn req_id(&self) -> u16;
+    /// Returns the Requester ID as a parsed Bus/Device/Function value.
+    fn requester_id(&self) -> DeviceID {
+        DeviceID::from_u16(self.req_id())
+    }
     /// Returns the 8-bit Tag field.
     fn tag(&self) -> u8;
     /// Returns the 7-bit Lower Address field.
@@ -777,6 +933,10 @@ pub fn new_cmpl_req(bytes: impl Into<Vec<u8>>) -> Result<Box<dyn CompletionReque
 pub trait MessageRequest {
     /// Returns the 16-bit Requester ID.
     fn req_id(&self) -> u16;
+    /// Returns the Requester ID as a parsed Bus/Device/Function value.
+    fn requester_id(&self) -> DeviceID {
+        DeviceID::from_u16(self.req_id())
+    }
     /// Returns the 8-bit Tag field.
     fn tag(&self) -> u8;
     /// Returns the 8-bit Message Code field.
@@ -860,6 +1020,10 @@ pub trait AtomicRequest: std::fmt::Debug {
     fn width(&self) -> AtomicWidth;
     /// Returns the 16-bit Requester ID.
     fn req_id(&self) -> u16;
+    /// Returns the Requester ID as a parsed Bus/Device/Function value.
+    fn requester_id(&self) -> DeviceID {
+        DeviceID::from_u16(self.req_id())
+    }
     /// Returns the 8-bit Tag field.
     fn tag(&self) -> u8;
     /// Returns the target address.
@@ -2037,6 +2201,61 @@ impl fmt::Display for TlpPacket {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn device_id_from_u16_extracts_bdf_fields() {
+        let id = DeviceID::from_u16(0x0218);
+        assert_eq!(id.bus(), 0x02);
+        assert_eq!(id.device(), 0x03);
+        assert_eq!(id.function(), 0x00);
+        assert_eq!(id.to_u16(), 0x0218);
+        assert_eq!(u16::from(id), 0x0218);
+        assert_eq!(format!("{id}"), "02:03.0");
+    }
+
+    #[test]
+    fn device_id_new_validates_bdf_ranges() {
+        assert_eq!(
+            DeviceID::from_parts(0x02, 0x03, 0x01).unwrap().to_u16(),
+            0x0219
+        );
+        assert!(DeviceID::from_parts(0x02, 0x20, 0x00).is_none());
+        assert!(DeviceID::from_parts(0x02, 0x03, 0x08).is_none());
+    }
+
+    #[test]
+    fn device_id_from_str_parses_standard_bdf_notation() {
+        let id: DeviceID = "C2:1F.7".parse().unwrap();
+        assert_eq!(id.bus(), 0xC2);
+        assert_eq!(id.device(), 0x1F);
+        assert_eq!(id.function(), 0x07);
+        assert_eq!(format!("{id}"), "C2:1F.7");
+    }
+
+    #[test]
+    fn device_id_from_str_rejects_invalid_bdf_notation() {
+        assert!("2:03.0".parse::<DeviceID>().is_err());
+        assert!("02:20.0".parse::<DeviceID>().is_err());
+        assert!("02:03.8".parse::<DeviceID>().is_err());
+        assert!("02-03.0".parse::<DeviceID>().is_err());
+    }
+
+    #[test]
+    fn request_traits_expose_device_ids() {
+        let mem = MemRequest3DW(&[0x02, 0x18, 0x20, 0x0F, 0xF6, 0x20, 0x00, 0x0C]);
+        assert_eq!(mem.requester_id(), DeviceID::from_u16(0x0218));
+        assert_eq!(mem.device_id(), DeviceID::from_u16(0x0218));
+
+        let cfg = ConfigRequest(&[0x02, 0x19, 0x20, 0x0F, 0xC2, 0x08, 0x00, 0x10]);
+        assert_eq!(cfg.requester_id(), DeviceID::from_u16(0x0219));
+
+        let cpl = CompletionReqDW23(&[0x20, 0x01, 0xFF, 0xC2, 0x02, 0x19, 0x20, 0x00]);
+        assert_eq!(cpl.completer_id(), DeviceID::from_u16(0x2001));
+        assert_eq!(cpl.requester_id(), DeviceID::from_u16(0x0219));
+
+        let msg = MessageReqDW24(&[0x02, 0x19, 0x20, 0x7F, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(msg.requester_id(), DeviceID::from_u16(0x0219));
+    }
 
     #[test]
     fn tlp_header_type() {

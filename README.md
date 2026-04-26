@@ -2,10 +2,11 @@
 
 A Rust crate for parsing PCI Express Transaction Layer Packets (TLPs).
 
-Decode raw TLP byte streams into strongly-typed structs and trait objects.
-The library handles DW0 header decoding (format + type), per-type field
-extraction (requester ID, tag, address, operands, …), and validates
-format/type combinations according to the PCIe specification.
+Decode raw TLP byte streams into strongly-typed structs, trait objects, and
+helper value types. The library handles DW0 header decoding (format + type),
+per-type field extraction (requester ID, tag, address, operands, …), typed
+Bus/Device/Function helpers, and validates format/type combinations according
+to the PCIe specification.
 
 ## Supported TLP Types
 
@@ -61,8 +62,8 @@ match packet.mode() {
                 // data() returns &[u8] — no extra allocation at this call site;
                 // new_mem_req takes impl Into<Vec<u8>> and may allocate internally.
                 let mr = new_mem_req(packet.data(), &tlp_format).unwrap();
-                println!("req_id=0x{:04X}  tag=0x{:02X}  addr=0x{:X}",
-                         mr.req_id(), mr.tag(), mr.address());
+                println!("req_id=0x{:04X} ({})  tag=0x{:02X}  addr=0x{:X}",
+                         mr.req_id(), mr.device_id(), mr.tag(), mr.address());
             }
             TlpType::FetchAddAtomicOpReq |
             TlpType::SwapAtomicOpReq |
@@ -154,6 +155,7 @@ assert!(!TlpType::MemWriteReq.is_non_posted());   // posted
 | `TlpFmt` | Format enum: `NoDataHeader3DW`, `NoDataHeader4DW`, `WithDataHeader3DW`, `WithDataHeader4DW`, `TlpPrefix` |
 | `TlpType` | 21-variant enum covering all decoded non-flit TLP types |
 | `TlpError` | `InvalidFormat`, `InvalidType`, `UnsupportedCombination`, `InvalidLength`, `NotImplemented`, `MissingMandatoryOhc` |
+| `DeviceID` | Typed PCIe Bus/Device/Function identifier with raw `u16` conversion, `BB:DD.F` display formatting, and `FromStr` parsing |
 
 ### Flit Mode Types (PCIe 6.0 Base Spec)
 
@@ -185,14 +187,37 @@ for result in FlitStreamWalker::new(stream) {
 
 | Trait | Fields | Constructor |
 |---|---|---|
-| `MemRequest` | `address()`, `req_id()`, `tag()`, `ldwbe()`, `fdwbe()` | `new_mem_req(bytes, &fmt)` |
-| `ConfigurationRequest` | `req_id()`, `tag()`, `bus_nr()`, `dev_nr()`, `func_nr()`, `ext_reg_nr()`, `reg_nr()` | `new_conf_req(bytes)` |
-| `CompletionRequest` | `cmpl_id()`, `cmpl_stat()`, `bcm()`, `byte_cnt()`, `req_id()`, `tag()`, `laddr()` | `new_cmpl_req(bytes)` |
-| `MessageRequest` | `req_id()`, `tag()`, `msg_code()`, `dw3()`, `dw4()` | `new_msg_req(bytes)` |
-| `AtomicRequest` | `op()`, `width()`, `req_id()`, `tag()`, `address()`, `operand0()`, `operand1()` | `new_atomic_req(&pkt)` |
+| `MemRequest` | `address()`, `req_id()`, `requester_id()`, `device_id()`, `tag()`, `ldwbe()`, `fdwbe()` | `new_mem_req(bytes, &fmt)` |
+| `ConfigurationRequest` | `req_id()`, `requester_id()`, `tag()`, `bus_nr()`, `dev_nr()`, `func_nr()`, `ext_reg_nr()`, `reg_nr()` | `new_conf_req(bytes)` |
+| `CompletionRequest` | `cmpl_id()`, `completer_id()`, `cmpl_stat()`, `bcm()`, `byte_cnt()`, `req_id()`, `requester_id()`, `tag()`, `laddr()` | `new_cmpl_req(bytes)` |
+| `MessageRequest` | `req_id()`, `requester_id()`, `tag()`, `msg_code()`, `dw3()`, `dw4()` | `new_msg_req(bytes)` |
+| `AtomicRequest` | `op()`, `width()`, `req_id()`, `requester_id()`, `tag()`, `address()`, `operand0()`, `operand1()` | `new_atomic_req(&pkt)` |
 
 > **Note:** All `bytes` parameters accept `impl Into<Vec<u8>>` — you can pass `pkt.data()` (`&[u8]`)
 > directly without calling `.to_vec()`. Only `new_mem_req` additionally requires `&TlpFmt`.
+
+### Device IDs
+
+`DeviceID` wraps the 16-bit Requester ID / Completer ID BDF encoding used in
+TLP headers:
+
+```rust
+use rtlp_lib::DeviceID;
+
+let id = DeviceID::from_u16(0x0218);
+assert_eq!(id.bus(), 0x02);
+assert_eq!(id.device(), 0x03);
+assert_eq!(id.function(), 0x00);
+assert_eq!(id.to_u16(), 0x0218);
+assert_eq!(format!("{id}"), "02:03.0");
+
+let parsed: DeviceID = "02:03.1".parse().unwrap();
+assert_eq!(parsed.to_u16(), 0x0219);
+```
+
+Request traits keep their raw `u16` accessors and add parsed helpers such as
+`MemRequest::device_id()`, `requester_id()`, and
+`CompletionRequest::completer_id()`.
 
 ### Atomic-Specific Types
 
@@ -216,18 +241,19 @@ Every decoding step returns `Result<_, TlpError>`:
 
 ## Tests
 
-The crate has **225 passing tests** in the default feature set (0 ignored):
+The crate has **235 passing tests** in the default feature set (0 ignored):
 
 | Category | File | Passes | Ignored |
 |---|---|---|---|
-| Unit tests | `src/lib.rs` | 69 | 0 |
-| API contract tests | `tests/api_tests.rs` | 77 | 0 |
+| Unit tests | `src/lib.rs` | 74 | 0 |
+| API contract tests | `tests/api_tests.rs` | 80 | 0 |
+| DeviceID allocation guard | `tests/device_id_alloc_tests.rs` | 1 | 0 |
 | Non-flit integration tests | `tests/non_flit_tests.rs` | 25 | 0 |
 | Flit mode tests | `tests/flit_mode_tests.rs` | 45 | 0 |
-| Doc tests | `src/lib.rs` | 9 | 0 |
+| Doc tests | `src/lib.rs` | 10 | 0 |
 
 ```bash
-cargo test                        # run all 225 default-feature tests
+cargo test                        # run all 235 default-feature tests
 cargo test --lib                  # unit tests only
 cargo test --test non_flit_tests  # non-flit integration tests only
 cargo test --test flit_mode_tests # flit mode tests (all tiers)
@@ -245,7 +271,7 @@ Enable the `serde` feature to derive `Serialize`/`Deserialize` on public value t
 rtlp-lib = { version = "0.5", features = ["serde"] }
 ```
 
-**Supported types:** `TlpMode`, `TlpError`, `TlpFmt`, `TlpType`, `AtomicOp`, `FlitTlpType`, `FlitDW0`, `FlitOhcA`
+**Supported types:** `TlpMode`, `TlpError`, `TlpFmt`, `TlpType`, `DeviceID`, `AtomicOp`, `AtomicWidth`, `FlitTlpType`, `FlitDW0`, `FlitOhcA`
 
 **Not supported:** `TlpPacket` and `TlpPacketHeader` — these contain `TlpHeader`, which uses a bitfield macro that does not support serde derives. If you need to serialize parsed packet data, extract the relevant fields into your own serde-compatible struct.
 
